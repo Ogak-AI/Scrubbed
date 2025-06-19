@@ -43,17 +43,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     error: null,
   });
 
-  // Get the correct redirect URL
+  // Get the correct redirect URL - always use custom domain
   const getRedirectUrl = () => {
-    if (typeof window !== 'undefined') {
-      // If we're on the custom domain, use it
-      if (window.location.hostname === 'scrubbed.online') {
-        return 'https://scrubbed.online';
-      }
-      // Otherwise use the current origin
-      return window.location.origin;
-    }
-    // Fallback for server-side rendering
+    // Always use the custom domain for OAuth redirects
     return 'https://scrubbed.online';
   };
 
@@ -302,7 +294,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     setLoading(true);
     
     try {
-      // Get the correct redirect URL
+      // Always use the custom domain for OAuth redirects
       const redirectTo = getRedirectUrl();
       
       console.log('Starting Google sign-in for:', userType, 'redirectTo:', redirectTo);
@@ -349,10 +341,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         error: null,
       });
 
-      // Redirect to the correct domain after sign out
+      // Redirect to the custom domain after sign out
       const redirectUrl = getRedirectUrl();
-      if (typeof window !== 'undefined' && window.location.origin !== redirectUrl) {
-        window.location.href = redirectUrl;
+      if (typeof window !== 'undefined') {
+        // Small delay to ensure sign out is processed
+        setTimeout(() => {
+          window.location.href = redirectUrl;
+        }, 100);
       }
     } catch (error) {
       console.error('Error signing out:', error);
