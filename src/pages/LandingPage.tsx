@@ -25,7 +25,8 @@ export const LandingPage: React.FC = () => {
               </div>
               <span className="ml-3 text-2xl font-bold text-gray-900">Scrubbed</span>
             </div>
-            <div className="flex space-x-3">
+            
+            <div className="flex items-center space-x-3">
               <button
                 onClick={handleDumperSignUp}
                 className="bg-green-600 text-white px-6 py-2 rounded-lg font-medium hover:bg-green-700 transition-colors"
@@ -38,6 +39,16 @@ export const LandingPage: React.FC = () => {
               >
                 Become Collector
               </button>
+              
+              {/* Badge */}
+              <div className="ml-2">
+                <img 
+                  src="/black_circle_360x360 (1).png" 
+                  alt="Powered by Bolt" 
+                  className="h-10 w-10 rounded-full shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+                  title="Powered by Bolt"
+                />
+              </div>
             </div>
           </div>
         </div>
