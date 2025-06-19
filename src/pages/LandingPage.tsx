@@ -300,7 +300,7 @@ export const LandingPage: React.FC = () => {
             <span className="ml-3 text-lg sm:text-xl font-bold">Scrubbed</span>
           </div>
           <div className="text-center text-gray-400">
-            <p className="text-sm sm:text-base">&copy; 2024 Scrubbed. All rights reserved.</p>
+            <p className="text-sm sm:text-base">&copy; 2025 Scrubbed. All rights reserved.</p>
             <p className="mt-2 text-sm sm:text-base">Making waste management smarter, one collection at a time.</p>
           </div>
         </div>
