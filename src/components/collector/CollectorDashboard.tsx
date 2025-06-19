@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { MapPin, Clock, Trash2, User, Settings, LogOut, Bell, DollarSign, Star, Navigation, AlertCircle } from 'lucide-react';
+import { MapPin, Clock, Trash2, User, Settings, LogOut, Bell, DollarSign, Star, Navigation, AlertCircle, Menu, X } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useCollectors } from '../../hooks/useCollectors';
 import { useWasteRequests } from '../../hooks/useWasteRequests';
@@ -10,6 +10,7 @@ export const CollectorDashboard: React.FC = () => {
   const { myCollectorProfile, loading: collectorsLoading, createCollectorProfile, updateAvailability } = useCollectors();
   const { requests, loading: requestsLoading, acceptRequest, updateRequestStatus, error } = useWasteRequests();
   const [isAvailable, setIsAvailable] = useState(true);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // Filter requests for collector view
   const availableRequests = requests.filter(r => r.status === 'pending' && !r.collectorId);
@@ -100,15 +101,16 @@ export const CollectorDashboard: React.FC = () => {
           <div className="flex justify-between items-center py-4">
             <div className="flex items-center">
               <div className="p-2 bg-green-100 rounded-lg mr-3">
-                <Trash2 className="h-6 w-6 text-green-600" />
+                <Trash2 className="h-5 w-5 sm:h-6 sm:w-6 text-green-600" />
               </div>
               <div>
-                <h1 className="text-xl font-semibold text-gray-900">Scrubbed Collector</h1>
-                <p className="text-sm text-gray-600">Professional Dashboard</p>
+                <h1 className="text-lg sm:text-xl font-semibold text-gray-900">Scrubbed Collector</h1>
+                <p className="text-xs sm:text-sm text-gray-600">Professional Dashboard</p>
               </div>
             </div>
             
-            <div className="flex items-center space-x-4">
+            {/* Desktop Header Actions */}
+            <div className="hidden lg:flex items-center space-x-4">
               <div className="flex items-center space-x-2">
                 <span className="text-sm text-gray-600">Available:</span>
                 <button
@@ -133,7 +135,7 @@ export const CollectorDashboard: React.FC = () => {
                 <div className="p-2 bg-green-100 rounded-full">
                   <User className="h-5 w-5 text-green-600" />
                 </div>
-                <div className="hidden sm:block">
+                <div className="hidden xl:block">
                   <p className="text-sm font-medium text-gray-900">{user?.fullName}</p>
                   <p className="text-xs text-gray-600">Collector</p>
                 </div>
@@ -151,16 +153,77 @@ export const CollectorDashboard: React.FC = () => {
                 <img 
                   src="/black_circle_360x360 (1).png" 
                   alt="Powered by Bolt" 
-                  className="h-10 w-10 rounded-full shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+                  className="h-8 w-8 lg:h-10 lg:w-10 rounded-full shadow-sm hover:shadow-md transition-shadow cursor-pointer"
                   title="Powered by Bolt"
                 />
               </div>
             </div>
+
+            {/* Mobile Header Actions */}
+            <div className="lg:hidden flex items-center space-x-2">
+              <img 
+                src="/black_circle_360x360 (1).png" 
+                alt="Powered by Bolt" 
+                className="h-8 w-8 rounded-full shadow-sm"
+                title="Powered by Bolt"
+              />
+              <button
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+              </button>
+            </div>
           </div>
+
+          {/* Mobile Menu */}
+          {mobileMenuOpen && (
+            <div className="lg:hidden border-t border-gray-200 py-4 space-y-3">
+              <div className="flex items-center justify-between px-2 py-2">
+                <div className="flex items-center space-x-3">
+                  <div className="p-2 bg-green-100 rounded-full">
+                    <User className="h-5 w-5 text-green-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">{user?.fullName}</p>
+                    <p className="text-xs text-gray-600">Collector</p>
+                  </div>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <span className="text-sm text-gray-600">Available:</span>
+                  <button
+                    onClick={handleAvailabilityToggle}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                      isAvailable ? 'bg-green-600' : 'bg-gray-300'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        isAvailable ? 'translate-x-6' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                </div>
+              </div>
+              <div className="border-t border-gray-200 pt-3 space-y-2">
+                <button className="w-full flex items-center px-2 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors">
+                  <Bell className="h-5 w-5 mr-3" />
+                  Notifications
+                </button>
+                <button
+                  onClick={signOut}
+                  className="w-full flex items-center px-2 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <LogOut className="h-5 w-5 mr-3" />
+                  Sign Out
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         {/* Error Display */}
         {error && (
           <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
@@ -172,59 +235,59 @@ export const CollectorDashboard: React.FC = () => {
         )}
 
         {/* Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          <div className="bg-white p-6 rounded-xl border border-gray-200">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-6 sm:mb-8">
+          <div className="bg-white p-4 sm:p-6 rounded-xl border border-gray-200">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">Active Jobs</p>
-                <p className="text-2xl font-bold text-blue-600">{myJobs.length}</p>
+                <p className="text-xs sm:text-sm font-medium text-gray-600">Active Jobs</p>
+                <p className="text-lg sm:text-2xl font-bold text-blue-600">{myJobs.length}</p>
               </div>
-              <Trash2 className="h-8 w-8 text-blue-600" />
+              <Trash2 className="h-6 w-6 sm:h-8 sm:w-8 text-blue-600" />
             </div>
           </div>
 
-          <div className="bg-white p-6 rounded-xl border border-gray-200">
+          <div className="bg-white p-4 sm:p-6 rounded-xl border border-gray-200">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">Available Requests</p>
-                <p className="text-2xl font-bold text-green-600">{availableRequests.length}</p>
+                <p className="text-xs sm:text-sm font-medium text-gray-600">Available</p>
+                <p className="text-lg sm:text-2xl font-bold text-green-600">{availableRequests.length}</p>
               </div>
-              <Clock className="h-8 w-8 text-green-600" />
+              <Clock className="h-6 w-6 sm:h-8 sm:w-8 text-green-600" />
             </div>
           </div>
 
-          <div className="bg-white p-6 rounded-xl border border-gray-200">
+          <div className="bg-white p-4 sm:p-6 rounded-xl border border-gray-200">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">Rating</p>
-                <p className="text-2xl font-bold text-yellow-600">
+                <p className="text-xs sm:text-sm font-medium text-gray-600">Rating</p>
+                <p className="text-lg sm:text-2xl font-bold text-yellow-600">
                   {myCollectorProfile.rating ? myCollectorProfile.rating.toFixed(1) : 'New'}
                 </p>
               </div>
-              <Star className="h-8 w-8 text-yellow-600" />
+              <Star className="h-6 w-6 sm:h-8 sm:w-8 text-yellow-600" />
             </div>
           </div>
 
-          <div className="bg-white p-6 rounded-xl border border-gray-200">
+          <div className="bg-white p-4 sm:p-6 rounded-xl border border-gray-200">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">Total Collections</p>
-                <p className="text-2xl font-bold text-purple-600">{myCollectorProfile.totalCollections}</p>
+                <p className="text-xs sm:text-sm font-medium text-gray-600">Collections</p>
+                <p className="text-lg sm:text-2xl font-bold text-purple-600">{myCollectorProfile.totalCollections}</p>
               </div>
-              <Navigation className="h-8 w-8 text-purple-600" />
+              <Navigation className="h-6 w-6 sm:h-8 sm:w-8 text-purple-600" />
             </div>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 sm:gap-8">
           {/* Available Requests */}
           <div className="bg-white rounded-xl border border-gray-200">
-            <div className="p-6 border-b border-gray-200">
+            <div className="p-4 sm:p-6 border-b border-gray-200">
               <h3 className="text-lg font-semibold text-gray-900">Available Requests</h3>
               <p className="text-sm text-gray-600">New collection requests in your area</p>
             </div>
             
-            <div className="p-6">
+            <div className="p-4 sm:p-6">
               {requestsLoading ? (
                 <div className="flex items-center justify-center py-8">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600"></div>
@@ -233,20 +296,20 @@ export const CollectorDashboard: React.FC = () => {
                 <div className="text-center py-8">
                   <Trash2 className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                   <h4 className="text-lg font-medium text-gray-900 mb-2">No requests available</h4>
-                  <p className="text-gray-600">Check back later for new collection opportunities.</p>
+                  <p className="text-gray-600 text-sm">Check back later for new collection opportunities.</p>
                 </div>
               ) : (
                 <div className="space-y-4">
                   {availableRequests.map((request) => (
                     <div key={request.id} className="border border-gray-200 rounded-lg p-4">
-                      <div className="flex items-start justify-between mb-3">
-                        <div>
+                      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between mb-3">
+                        <div className="flex-1">
                           <h4 className="font-medium text-gray-900">{request.wasteType} Waste</h4>
                           {request.estimatedAmount && (
                             <p className="text-sm text-gray-600">{request.estimatedAmount}</p>
                           )}
                         </div>
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(request.status)}`}>
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(request.status)} mt-2 sm:mt-0 self-start`}>
                           {request.status.toUpperCase()}
                         </span>
                       </div>
@@ -255,13 +318,13 @@ export const CollectorDashboard: React.FC = () => {
                         <p className="text-gray-600 text-sm mb-3">{request.description}</p>
                       )}
                       
-                      <div className="flex items-center justify-between text-sm text-gray-500 mb-4">
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between text-sm text-gray-500 mb-4 space-y-2 sm:space-y-0">
                         <div className="flex items-center">
-                          <MapPin className="h-4 w-4 mr-1" />
-                          {request.address}
+                          <MapPin className="h-4 w-4 mr-1 flex-shrink-0" />
+                          <span className="truncate">{request.address}</span>
                         </div>
                         <div className="flex items-center">
-                          <Navigation className="h-4 w-4 mr-1" />
+                          <Navigation className="h-4 w-4 mr-1 flex-shrink-0" />
                           {calculateDistance(40.7128, -74.0060, request.location.lat, request.location.lng)} mi
                         </div>
                       </div>
@@ -288,30 +351,30 @@ export const CollectorDashboard: React.FC = () => {
 
           {/* My Jobs */}
           <div className="bg-white rounded-xl border border-gray-200">
-            <div className="p-6 border-b border-gray-200">
+            <div className="p-4 sm:p-6 border-b border-gray-200">
               <h3 className="text-lg font-semibold text-gray-900">My Jobs</h3>
               <p className="text-sm text-gray-600">Your accepted and ongoing collections</p>
             </div>
             
-            <div className="p-6">
+            <div className="p-4 sm:p-6">
               {myJobs.length === 0 ? (
                 <div className="text-center py-8">
                   <Clock className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                   <h4 className="text-lg font-medium text-gray-900 mb-2">No active jobs</h4>
-                  <p className="text-gray-600">Accept requests from the available list to start earning.</p>
+                  <p className="text-gray-600 text-sm">Accept requests from the available list to start earning.</p>
                 </div>
               ) : (
                 <div className="space-y-4">
                   {myJobs.map((job) => (
                     <div key={job.id} className="border border-gray-200 rounded-lg p-4">
-                      <div className="flex items-start justify-between mb-3">
-                        <div>
+                      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between mb-3">
+                        <div className="flex-1">
                           <h4 className="font-medium text-gray-900">{job.wasteType} Waste</h4>
                           {job.estimatedAmount && (
                             <p className="text-sm text-gray-600">{job.estimatedAmount}</p>
                           )}
                         </div>
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(job.status)}`}>
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(job.status)} mt-2 sm:mt-0 self-start`}>
                           {job.status.replace('_', ' ').toUpperCase()}
                         </span>
                       </div>
@@ -320,13 +383,13 @@ export const CollectorDashboard: React.FC = () => {
                         <p className="text-gray-600 text-sm mb-3">{job.description}</p>
                       )}
                       
-                      <div className="flex items-center justify-between text-sm text-gray-500 mb-4">
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between text-sm text-gray-500 mb-4 space-y-2 sm:space-y-0">
                         <div className="flex items-center">
-                          <MapPin className="h-4 w-4 mr-1" />
-                          {job.address}
+                          <MapPin className="h-4 w-4 mr-1 flex-shrink-0" />
+                          <span className="truncate">{job.address}</span>
                         </div>
                         <div className="flex items-center">
-                          <Navigation className="h-4 w-4 mr-1" />
+                          <Navigation className="h-4 w-4 mr-1 flex-shrink-0" />
                           {calculateDistance(40.7128, -74.0060, job.location.lat, job.location.lng)} mi
                         </div>
                       </div>
@@ -338,11 +401,11 @@ export const CollectorDashboard: React.FC = () => {
                         </div>
                       )}
                       
-                      <div className="flex space-x-2">
+                      <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2">
                         {job.status === 'matched' && (
                           <button
                             onClick={() => handleUpdateStatus(job.id, 'in_progress')}
-                            className="flex-1 bg-blue-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-blue-700 transition-colors"
+                            className="flex-1 bg-blue-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-blue-700 transition-colors text-sm"
                           >
                             Start Collection
                           </button>
@@ -350,12 +413,12 @@ export const CollectorDashboard: React.FC = () => {
                         {job.status === 'in_progress' && (
                           <button
                             onClick={() => handleUpdateStatus(job.id, 'completed')}
-                            className="flex-1 bg-green-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-green-700 transition-colors"
+                            className="flex-1 bg-green-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-green-700 transition-colors text-sm"
                           >
                             Mark Complete
                           </button>
                         )}
-                        <button className="flex-1 border border-gray-300 text-gray-700 py-2 px-4 rounded-lg font-medium hover:bg-gray-50 transition-colors">
+                        <button className="flex-1 border border-gray-300 text-gray-700 py-2 px-4 rounded-lg font-medium hover:bg-gray-50 transition-colors text-sm">
                           Contact Customer
                         </button>
                       </div>

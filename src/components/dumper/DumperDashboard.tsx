@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, MapPin, Clock, Trash2, User, Settings, LogOut, Bell, Search, Filter, AlertCircle, RefreshCw } from 'lucide-react';
+import { Plus, MapPin, Clock, Trash2, User, Settings, LogOut, Bell, Search, Filter, AlertCircle, RefreshCw, Menu, X } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useWasteRequests } from '../../hooks/useWasteRequests';
 import { RequestForm } from './RequestForm';
@@ -11,6 +11,7 @@ export const DumperDashboard: React.FC = () => {
   const [filter, setFilter] = useState<'all' | 'pending' | 'matched' | 'in_progress' | 'completed'>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [createError, setCreateError] = useState<string | null>(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const filteredRequests = requests.filter(request => {
     const matchesFilter = filter === 'all' || request.status === filter;
@@ -114,12 +115,13 @@ export const DumperDashboard: React.FC = () => {
           <div className="flex justify-between items-center py-4">
             <div className="flex items-center">
               <div className="p-2 bg-green-100 rounded-lg">
-                <Trash2 className="h-8 w-8 text-green-600" />
+                <Trash2 className="h-6 w-6 sm:h-8 sm:w-8 text-green-600" />
               </div>
-              <span className="ml-3 text-2xl font-bold text-gray-900">Scrubbed</span>
+              <span className="ml-3 text-xl sm:text-2xl font-bold text-gray-900">Scrubbed</span>
             </div>
             
-            <div className="flex items-center space-x-4">
+            {/* Desktop Header Actions */}
+            <div className="hidden lg:flex items-center space-x-4">
               <button className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100">
                 <Bell className="h-5 w-5" />
               </button>
@@ -128,7 +130,7 @@ export const DumperDashboard: React.FC = () => {
                 <div className="p-2 bg-green-100 rounded-full">
                   <User className="h-5 w-5 text-green-600" />
                 </div>
-                <div className="hidden sm:block">
+                <div className="hidden xl:block">
                   <p className="text-sm font-medium text-gray-900">{user?.fullName || user?.email}</p>
                   <p className="text-xs text-gray-600">{user?.email}</p>
                 </div>
@@ -146,22 +148,66 @@ export const DumperDashboard: React.FC = () => {
                 <img 
                   src="/black_circle_360x360 (1).png" 
                   alt="Powered by Bolt" 
-                  className="h-10 w-10 rounded-full shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+                  className="h-8 w-8 lg:h-10 lg:w-10 rounded-full shadow-sm hover:shadow-md transition-shadow cursor-pointer"
                   title="Powered by Bolt"
                 />
               </div>
             </div>
+
+            {/* Mobile Header Actions */}
+            <div className="lg:hidden flex items-center space-x-2">
+              <img 
+                src="/black_circle_360x360 (1).png" 
+                alt="Powered by Bolt" 
+                className="h-8 w-8 rounded-full shadow-sm"
+                title="Powered by Bolt"
+              />
+              <button
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+              </button>
+            </div>
           </div>
+
+          {/* Mobile Menu */}
+          {mobileMenuOpen && (
+            <div className="lg:hidden border-t border-gray-200 py-4 space-y-3">
+              <div className="flex items-center space-x-3 px-2 py-2">
+                <div className="p-2 bg-green-100 rounded-full">
+                  <User className="h-5 w-5 text-green-600" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-900">{user?.fullName || user?.email}</p>
+                  <p className="text-xs text-gray-600">{user?.email}</p>
+                </div>
+              </div>
+              <div className="border-t border-gray-200 pt-3 space-y-2">
+                <button className="w-full flex items-center px-2 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors">
+                  <Bell className="h-5 w-5 mr-3" />
+                  Notifications
+                </button>
+                <button
+                  onClick={signOut}
+                  className="w-full flex items-center px-2 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <LogOut className="h-5 w-5 mr-3" />
+                  Sign Out
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         {/* Welcome Section */}
-        <div className="mb-8">
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">
+        <div className="mb-6 sm:mb-8">
+          <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-2">
             Welcome back, {getFirstName()}!
           </h2>
-          <p className="text-gray-600">Manage your waste collection requests and track their progress.</p>
+          <p className="text-gray-600 text-sm sm:text-base">Manage your waste collection requests and track their progress.</p>
         </div>
 
         {/* Error Display */}
@@ -183,52 +229,52 @@ export const DumperDashboard: React.FC = () => {
         )}
 
         {/* Quick Actions */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 mb-6 sm:mb-8">
           <button
             onClick={() => setShowRequestForm(true)}
-            className="bg-green-600 text-white p-6 rounded-xl hover:bg-green-700 transition-colors group"
+            className="bg-green-600 text-white p-4 sm:p-6 rounded-xl hover:bg-green-700 transition-colors group col-span-1 sm:col-span-2 lg:col-span-1"
           >
             <div className="flex items-center justify-between">
               <div className="text-left">
-                <h3 className="text-lg font-semibold mb-1">New Request</h3>
+                <h3 className="text-base sm:text-lg font-semibold mb-1">New Request</h3>
                 <p className="text-green-100 text-sm">Schedule a pickup</p>
               </div>
-              <Plus className="h-8 w-8 group-hover:scale-110 transition-transform" />
+              <Plus className="h-6 w-6 sm:h-8 sm:w-8 group-hover:scale-110 transition-transform" />
             </div>
           </button>
 
-          <div className="bg-white p-6 rounded-xl border border-gray-200">
+          <div className="bg-white p-4 sm:p-6 rounded-xl border border-gray-200">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-1">Active Requests</h3>
-                <p className="text-2xl font-bold text-green-600">
+                <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-1">Active Requests</h3>
+                <p className="text-xl sm:text-2xl font-bold text-green-600">
                   {requests.filter(r => ['pending', 'matched', 'in_progress'].includes(r.status)).length}
                 </p>
               </div>
-              <Clock className="h-8 w-8 text-gray-400" />
+              <Clock className="h-6 w-6 sm:h-8 sm:w-8 text-gray-400" />
             </div>
           </div>
 
-          <div className="bg-white p-6 rounded-xl border border-gray-200">
+          <div className="bg-white p-4 sm:p-6 rounded-xl border border-gray-200">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-1">Completed</h3>
-                <p className="text-2xl font-bold text-blue-600">
+                <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-1">Completed</h3>
+                <p className="text-xl sm:text-2xl font-bold text-blue-600">
                   {requests.filter(r => r.status === 'completed').length}
                 </p>
               </div>
-              <Trash2 className="h-8 w-8 text-gray-400" />
+              <Trash2 className="h-6 w-6 sm:h-8 sm:w-8 text-gray-400" />
             </div>
           </div>
         </div>
 
         {/* Requests Section */}
         <div className="bg-white rounded-xl border border-gray-200">
-          <div className="p-6 border-b border-gray-200">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div className="p-4 sm:p-6 border-b border-gray-200">
+            <div className="flex flex-col space-y-4 sm:space-y-0 sm:flex-row sm:items-center sm:justify-between">
               <h3 className="text-lg font-semibold text-gray-900">Your Requests</h3>
               
-              <div className="flex items-center space-x-3">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center space-y-3 sm:space-y-0 sm:space-x-3">
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
                   <input
@@ -236,14 +282,14 @@ export const DumperDashboard: React.FC = () => {
                     placeholder="Search requests..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm"
+                    className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm w-full sm:w-auto"
                   />
                 </div>
                 
                 <select
                   value={filter}
                   onChange={(e) => setFilter(e.target.value as any)}
-                  className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm"
+                  className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm w-full sm:w-auto"
                 >
                   <option value="all">All Status</option>
                   <option value="pending">Pending</option>
@@ -255,7 +301,7 @@ export const DumperDashboard: React.FC = () => {
             </div>
           </div>
 
-          <div className="p-6">
+          <div className="p-4 sm:p-6">
             {loading ? (
               <div className="flex items-center justify-center py-12">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600"></div>
@@ -265,7 +311,7 @@ export const DumperDashboard: React.FC = () => {
               <div className="text-center py-12">
                 <Trash2 className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                 <h4 className="text-lg font-medium text-gray-900 mb-2">No requests found</h4>
-                <p className="text-gray-600 mb-6">
+                <p className="text-gray-600 mb-6 px-4">
                   {filter === 'all' && searchTerm === ''
                     ? "You haven't created any waste collection requests yet."
                     : `No requests match your current filters.`
@@ -284,11 +330,11 @@ export const DumperDashboard: React.FC = () => {
               <div className="space-y-4">
                 {filteredRequests.map((request) => (
                   <div key={request.id} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
-                    <div className="flex items-start justify-between">
+                    <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between">
                       <div className="flex-1">
-                        <div className="flex items-center space-x-3 mb-2">
+                        <div className="flex flex-col sm:flex-row sm:items-center space-y-2 sm:space-y-0 sm:space-x-3 mb-2">
                           <h4 className="font-medium text-gray-900">{request.wasteType} Waste</h4>
-                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(request.status)}`}>
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(request.status)} self-start`}>
                             {request.status.replace('_', ' ').toUpperCase()}
                           </span>
                           {request.estimatedAmount && (
@@ -300,13 +346,13 @@ export const DumperDashboard: React.FC = () => {
                           <p className="text-gray-600 text-sm mb-3">{request.description}</p>
                         )}
                         
-                        <div className="flex items-center space-x-4 text-sm text-gray-500">
+                        <div className="flex flex-col sm:flex-row sm:items-center space-y-2 sm:space-y-0 sm:space-x-4 text-sm text-gray-500">
                           <div className="flex items-center">
-                            <MapPin className="h-4 w-4 mr-1" />
-                            {request.address}
+                            <MapPin className="h-4 w-4 mr-1 flex-shrink-0" />
+                            <span className="truncate">{request.address}</span>
                           </div>
                           <div className="flex items-center">
-                            <Clock className="h-4 w-4 mr-1" />
+                            <Clock className="h-4 w-4 mr-1 flex-shrink-0" />
                             {request.scheduledTime ? formatDate(request.scheduledTime) : 'ASAP'}
                           </div>
                         </div>
@@ -316,7 +362,7 @@ export const DumperDashboard: React.FC = () => {
                         </div>
                       </div>
                       
-                      <div className="ml-4">
+                      <div className="mt-4 sm:mt-0 sm:ml-4">
                         <button className="text-green-600 hover:text-green-700 font-medium text-sm">
                           View Details
                         </button>
@@ -331,7 +377,7 @@ export const DumperDashboard: React.FC = () => {
 
         {/* Setup Notice */}
         {!loading && requests.length === 0 && !error && (
-          <div className="mt-8 bg-blue-50 border border-blue-200 rounded-lg p-6">
+          <div className="mt-8 bg-blue-50 border border-blue-200 rounded-lg p-4 sm:p-6">
             <h4 className="font-medium text-blue-800 mb-2">🚀 Getting Started</h4>
             <p className="text-blue-700 text-sm mb-4">
               To see your requests and connect with collectors, make sure you have:

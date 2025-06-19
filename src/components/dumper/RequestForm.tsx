@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ArrowLeft, MapPin, Camera, Calendar, Package, AlertCircle, CheckCircle, RefreshCw } from 'lucide-react';
+import { ArrowLeft, MapPin, Camera, Calendar, Package, AlertCircle, CheckCircle, RefreshCw, Menu, X } from 'lucide-react';
 import { WASTE_TYPES } from '../../types';
 
 interface RequestFormProps {
@@ -88,13 +88,13 @@ export const RequestForm: React.FC<RequestFormProps> = ({ onClose, onSubmit }) =
 
   if (success) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="max-w-md w-full bg-white rounded-xl border border-gray-200 p-8 text-center">
-          <div className="p-3 bg-green-100 rounded-full w-16 h-16 mx-auto mb-4 flex items-center justify-center">
-            <CheckCircle className="h-8 w-8 text-green-600" />
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-white rounded-xl border border-gray-200 p-6 sm:p-8 text-center">
+          <div className="p-3 bg-green-100 rounded-full w-12 h-12 sm:w-16 sm:h-16 mx-auto mb-4 flex items-center justify-center">
+            <CheckCircle className="h-6 w-6 sm:h-8 sm:w-8 text-green-600" />
           </div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Request Created!</h2>
-          <p className="text-gray-600 mb-4">
+          <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-2">Request Created!</h2>
+          <p className="text-gray-600 mb-4 text-sm sm:text-base">
             Your waste collection request has been submitted successfully. 
             You'll be notified when collectors show interest.
           </p>
@@ -119,13 +119,13 @@ export const RequestForm: React.FC<RequestFormProps> = ({ onClose, onSubmit }) =
             >
               <ArrowLeft className="h-5 w-5" />
             </button>
-            <h1 className="text-xl font-semibold text-gray-900">New Collection Request</h1>
+            <h1 className="text-lg sm:text-xl font-semibold text-gray-900">New Collection Request</h1>
           </div>
         </div>
       </header>
 
-      <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="bg-white rounded-xl border border-gray-200 p-6">
+      <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+        <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-6">
           {/* Error Display */}
           {error && (
             <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
@@ -154,7 +154,7 @@ export const RequestForm: React.FC<RequestFormProps> = ({ onClose, onSubmit }) =
                 value={formData.wasteType}
                 onChange={(e) => setFormData({ ...formData, wasteType: e.target.value })}
                 required
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm sm:text-base"
               >
                 <option value="">Select waste type</option>
                 {WASTE_TYPES.map((type) => (
@@ -172,7 +172,7 @@ export const RequestForm: React.FC<RequestFormProps> = ({ onClose, onSubmit }) =
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 rows={3}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm sm:text-base"
                 placeholder="Describe the waste items (optional)"
               />
             </div>
@@ -190,7 +190,7 @@ export const RequestForm: React.FC<RequestFormProps> = ({ onClose, onSubmit }) =
                     value={formData.address}
                     onChange={(e) => setFormData({ ...formData, address: e.target.value })}
                     required
-                    className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                    className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm sm:text-base"
                     placeholder="Enter pickup address"
                   />
                 </div>
@@ -221,7 +221,7 @@ export const RequestForm: React.FC<RequestFormProps> = ({ onClose, onSubmit }) =
                   type="text"
                   value={formData.estimatedAmount}
                   onChange={(e) => setFormData({ ...formData, estimatedAmount: e.target.value })}
-                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm sm:text-base"
                   placeholder="e.g., 2-3 bags, 1 box, etc."
                 />
               </div>
@@ -239,7 +239,7 @@ export const RequestForm: React.FC<RequestFormProps> = ({ onClose, onSubmit }) =
                   value={formData.scheduledTime}
                   onChange={(e) => setFormData({ ...formData, scheduledTime: e.target.value })}
                   min={new Date().toISOString().slice(0, 16)}
-                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm sm:text-base"
                 />
               </div>
               <p className="mt-1 text-xs text-gray-500">
@@ -252,8 +252,8 @@ export const RequestForm: React.FC<RequestFormProps> = ({ onClose, onSubmit }) =
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Photos (Optional)
               </label>
-              <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-gray-400 transition-colors">
-                <Camera className="h-8 w-8 text-gray-400 mx-auto mb-2" />
+              <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 sm:p-6 text-center hover:border-gray-400 transition-colors">
+                <Camera className="h-6 w-6 sm:h-8 sm:w-8 text-gray-400 mx-auto mb-2" />
                 <p className="text-gray-600 text-sm mb-2">Add photos of your waste</p>
                 <button
                   type="button"
@@ -266,19 +266,19 @@ export const RequestForm: React.FC<RequestFormProps> = ({ onClose, onSubmit }) =
             </div>
 
             {/* Submit Button */}
-            <div className="flex space-x-4 pt-6">
+            <div className="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-4 pt-6">
               <button
                 type="button"
                 onClick={onClose}
                 disabled={loading}
-                className="flex-1 px-6 py-3 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition-colors disabled:opacity-50"
+                className="flex-1 px-6 py-3 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition-colors disabled:opacity-50 text-sm sm:text-base"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={loading || !formData.wasteType || !formData.address}
-                className="flex-1 bg-green-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="flex-1 bg-green-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm sm:text-base"
               >
                 {loading ? (
                   <div className="flex items-center justify-center">
@@ -295,8 +295,8 @@ export const RequestForm: React.FC<RequestFormProps> = ({ onClose, onSubmit }) =
 
         {/* Info Card */}
         <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
-          <h4 className="font-medium text-blue-800 mb-2">What happens next?</h4>
-          <ol className="text-blue-700 text-sm space-y-1">
+          <h4 className="font-medium text-blue-800 mb-2 text-sm sm:text-base">What happens next?</h4>
+          <ol className="text-blue-700 text-xs sm:text-sm space-y-1">
             <li>1. Your request will be posted to nearby collectors</li>
             <li>2. You'll receive notifications when collectors show interest</li>
             <li>3. Choose your preferred collector and confirm the pickup</li>
@@ -307,7 +307,7 @@ export const RequestForm: React.FC<RequestFormProps> = ({ onClose, onSubmit }) =
         {/* Debug Info (only in development) */}
         {process.env.NODE_ENV === 'development' && (
           <div className="mt-6 bg-gray-50 border border-gray-200 rounded-lg p-4">
-            <h4 className="font-medium text-gray-800 mb-2">Debug Info</h4>
+            <h4 className="font-medium text-gray-800 mb-2 text-sm">Debug Info</h4>
             <pre className="text-xs text-gray-600 overflow-auto">
               {JSON.stringify({ formData, currentLocation }, null, 2)}
             </pre>
