@@ -123,6 +123,7 @@ export const DumperDashboard: React.FC = () => {
               <button className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100">
                 <Bell className="h-5 w-5" />
               </button>
+              
               <div className="flex items-center space-x-2">
                 <div className="p-2 bg-green-100 rounded-full">
                   <User className="h-5 w-5 text-green-600" />
@@ -132,12 +133,23 @@ export const DumperDashboard: React.FC = () => {
                   <p className="text-xs text-gray-600">{user?.email}</p>
                 </div>
               </div>
+              
               <button
                 onClick={signOut}
                 className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100"
               >
                 <LogOut className="h-5 w-5" />
               </button>
+              
+              {/* Badge */}
+              <div className="ml-2">
+                <img 
+                  src="/black_circle_360x360 (1).png" 
+                  alt="Powered by Bolt" 
+                  className="h-10 w-10 rounded-full shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+                  title="Powered by Bolt"
+                />
+              </div>
             </div>
           </div>
         </div>

@@ -145,6 +145,16 @@ export const CollectorDashboard: React.FC = () => {
               >
                 <LogOut className="h-5 w-5" />
               </button>
+              
+              {/* Badge */}
+              <div className="ml-2">
+                <img 
+                  src="/black_circle_360x360 (1).png" 
+                  alt="Powered by Bolt" 
+                  className="h-10 w-10 rounded-full shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+                  title="Powered by Bolt"
+                />
+              </div>
             </div>
           </div>
         </div>

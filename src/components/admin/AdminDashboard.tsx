@@ -1,9 +1,59 @@
 import React from 'react';
-import { Users, Trash2, MapPin, BarChart3, AlertCircle } from 'lucide-react';
+import { Users, Trash2, MapPin, BarChart3, AlertCircle, LogOut, Bell, User } from 'lucide-react';
+import { useAuth } from '../../contexts/AuthContext';
 
 export const AdminDashboard: React.FC = () => {
+  const { user, signOut } = useAuth();
+
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <header className="bg-white shadow-sm border-b border-gray-200">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center py-4">
+            <div className="flex items-center">
+              <div className="p-2 bg-green-100 rounded-lg">
+                <Trash2 className="h-8 w-8 text-green-600" />
+              </div>
+              <span className="ml-3 text-2xl font-bold text-gray-900">Scrubbed Admin</span>
+            </div>
+            
+            <div className="flex items-center space-x-4">
+              <button className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100">
+                <Bell className="h-5 w-5" />
+              </button>
+              
+              <div className="flex items-center space-x-2">
+                <div className="p-2 bg-green-100 rounded-full">
+                  <User className="h-5 w-5 text-green-600" />
+                </div>
+                <div className="hidden sm:block">
+                  <p className="text-sm font-medium text-gray-900">{user?.fullName || user?.email}</p>
+                  <p className="text-xs text-gray-600">Administrator</p>
+                </div>
+              </div>
+              
+              <button
+                onClick={signOut}
+                className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100"
+              >
+                <LogOut className="h-5 w-5" />
+              </button>
+              
+              {/* Badge */}
+              <div className="ml-2">
+                <img 
+                  src="/black_circle_360x360 (1).png" 
+                  alt="Powered by Bolt" 
+                  className="h-10 w-10 rounded-full shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+                  title="Powered by Bolt"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      </header>
+
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <div className="mb-8">
