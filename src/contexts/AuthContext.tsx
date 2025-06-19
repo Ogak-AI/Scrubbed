@@ -43,6 +43,20 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     error: null,
   });
 
+  // Get the correct redirect URL
+  const getRedirectUrl = () => {
+    if (typeof window !== 'undefined') {
+      // If we're on the custom domain, use it
+      if (window.location.hostname === 'scrubbed.online') {
+        return 'https://scrubbed.online';
+      }
+      // Otherwise use the current origin
+      return window.location.origin;
+    }
+    // Fallback for server-side rendering
+    return 'https://scrubbed.online';
+  };
+
   useEffect(() => {
     let mounted = true;
 
@@ -288,8 +302,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     setLoading(true);
     
     try {
-      // Get the current URL for redirect
-      const redirectTo = typeof window !== 'undefined' ? window.location.origin : undefined;
+      // Get the correct redirect URL
+      const redirectTo = getRedirectUrl();
       
       console.log('Starting Google sign-in for:', userType, 'redirectTo:', redirectTo);
       
@@ -321,6 +335,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const signOut = async () => {
     try {
+      // Sign out and redirect to the correct domain
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
       
@@ -333,6 +348,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         isVerifying: false,
         error: null,
       });
+
+      // Redirect to the correct domain after sign out
+      const redirectUrl = getRedirectUrl();
+      if (typeof window !== 'undefined' && window.location.origin !== redirectUrl) {
+        window.location.href = redirectUrl;
+      }
     } catch (error) {
       console.error('Error signing out:', error);
       throw error;

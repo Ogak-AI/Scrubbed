@@ -14,10 +14,24 @@ if (!supabaseUrl || !supabaseAnonKey) {
   
   supabase = createClient<Database>(fallbackUrl, fallbackKey);
 } else {
+  // Get the current origin, prioritizing the custom domain
+  const getCurrentOrigin = () => {
+    if (typeof window !== 'undefined') {
+      // If we're on the custom domain, use it
+      if (window.location.hostname === 'scrubbed.online') {
+        return 'https://scrubbed.online';
+      }
+      // Otherwise use the current origin
+      return window.location.origin;
+    }
+    // Fallback for server-side rendering
+    return 'https://scrubbed.online';
+  };
+
   supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
     auth: {
-      // Use the current origin for redirects in production
-      redirectTo: typeof window !== 'undefined' ? window.location.origin : undefined,
+      // Use the current origin for redirects, prioritizing custom domain
+      redirectTo: getCurrentOrigin(),
       // Reduce token refresh frequency to improve performance
       autoRefreshToken: true,
       persistSession: true,
