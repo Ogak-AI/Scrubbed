@@ -17,21 +17,42 @@ export const RequestForm: React.FC<RequestFormProps> = ({ onClose, onSubmit }) =
     photos: [] as string[],
   });
   const [loading, setLoading] = useState(false);
+  const [locationLoading, setLocationLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [validationErrors, setValidationErrors] = useState<{[key: string]: string}>({});
   const [success, setSuccess] = useState(false);
   const [currentLocation, setCurrentLocation] = useState<{ lat: number; lng: number } | null>(null);
 
+  const validateForm = () => {
+    const errors: {[key: string]: string} = {};
+    
+    if (!formData.wasteType.trim()) {
+      errors.wasteType = 'Please select a waste type';
+    }
+    
+    if (!formData.address.trim()) {
+      errors.address = 'Please enter a pickup address';
+    }
+    
+    setValidationErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
     setError(null);
+    setValidationErrors({});
+    
+    // Validate form before proceeding
+    if (!validateForm()) {
+      setError('Please fill in all required fields');
+      return;
+    }
+
+    setLoading(true);
     setSuccess(false);
 
     try {
-      if (!formData.wasteType || !formData.address) {
-        throw new Error('Please fill in all required fields');
-      }
-
       const requestData = {
         wasteType: formData.wasteType,
         description: formData.description || undefined,
@@ -60,29 +81,133 @@ export const RequestForm: React.FC<RequestFormProps> = ({ onClose, onSubmit }) =
     }
   };
 
-  const getCurrentLocation = () => {
-    setError(null);
-    
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          setCurrentLocation({
-            lat: position.coords.latitude,
-            lng: position.coords.longitude,
-          });
-          // In a real app, you would reverse geocode this to get the address
-          setFormData(prev => ({
-            ...prev,
-            address: `${position.coords.latitude.toFixed(4)}, ${position.coords.longitude.toFixed(4)}`,
-          }));
-        },
-        (error) => {
-          console.error('Error getting location:', error);
-          setError('Unable to get your location. Please enter your address manually.');
+  const reverseGeocode = async (lat: number, lng: number): Promise<string> => {
+    try {
+      // Using a free geocoding service (OpenStreetMap Nominatim)
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`,
+        {
+          headers: {
+            'User-Agent': 'Scrubbed-App/1.0'
+          }
         }
       );
-    } else {
+      
+      if (!response.ok) {
+        throw new Error('Geocoding service unavailable');
+      }
+      
+      const data = await response.json();
+      
+      if (data && data.display_name) {
+        // Format the address nicely
+        const address = data.address;
+        let formattedAddress = '';
+        
+        if (address) {
+          const parts = [];
+          if (address.house_number) parts.push(address.house_number);
+          if (address.road) parts.push(address.road);
+          if (address.neighbourhood || address.suburb) parts.push(address.neighbourhood || address.suburb);
+          if (address.city || address.town || address.village) parts.push(address.city || address.town || address.village);
+          if (address.state) parts.push(address.state);
+          if (address.postcode) parts.push(address.postcode);
+          
+          formattedAddress = parts.join(', ');
+        }
+        
+        return formattedAddress || data.display_name;
+      }
+      
+      throw new Error('Address not found');
+    } catch (error) {
+      console.error('Reverse geocoding error:', error);
+      // Fallback to coordinates if geocoding fails
+      return `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+    }
+  };
+
+  const getCurrentLocation = async () => {
+    setError(null);
+    setLocationLoading(true);
+    
+    if (!navigator.geolocation) {
       setError('Geolocation is not supported by this browser.');
+      setLocationLoading(false);
+      return;
+    }
+
+    try {
+      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(
+          resolve,
+          reject,
+          {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 300000 // 5 minutes
+          }
+        );
+      });
+
+      const { latitude, longitude } = position.coords;
+      
+      setCurrentLocation({
+        lat: latitude,
+        lng: longitude,
+      });
+
+      // Get human-readable address
+      const address = await reverseGeocode(latitude, longitude);
+      
+      setFormData(prev => ({
+        ...prev,
+        address: address,
+      }));
+
+      // Clear any address validation errors
+      setValidationErrors(prev => {
+        const newErrors = { ...prev };
+        delete newErrors.address;
+        return newErrors;
+      });
+
+    } catch (error: any) {
+      console.error('Error getting location:', error);
+      
+      let errorMessage = 'Unable to get your location. ';
+      
+      switch (error.code) {
+        case error.PERMISSION_DENIED:
+          errorMessage += 'Please allow location access and try again.';
+          break;
+        case error.POSITION_UNAVAILABLE:
+          errorMessage += 'Location information is unavailable.';
+          break;
+        case error.TIMEOUT:
+          errorMessage += 'Location request timed out. Please try again.';
+          break;
+        default:
+          errorMessage += 'Please enter your address manually.';
+          break;
+      }
+      
+      setError(errorMessage);
+    } finally {
+      setLocationLoading(false);
+    }
+  };
+
+  const handleInputChange = (field: string, value: string) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+    
+    // Clear validation error for this field when user starts typing
+    if (validationErrors[field]) {
+      setValidationErrors(prev => {
+        const newErrors = { ...prev };
+        delete newErrors[field];
+        return newErrors;
+      });
     }
   };
 
@@ -152,15 +277,22 @@ export const RequestForm: React.FC<RequestFormProps> = ({ onClose, onSubmit }) =
               </label>
               <select
                 value={formData.wasteType}
-                onChange={(e) => setFormData({ ...formData, wasteType: e.target.value })}
-                required
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm sm:text-base"
+                onChange={(e) => handleInputChange('wasteType', e.target.value)}
+                className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm sm:text-base ${
+                  validationErrors.wasteType ? 'border-red-300 bg-red-50' : 'border-gray-300'
+                }`}
               >
                 <option value="">Select waste type</option>
                 {WASTE_TYPES.map((type) => (
                   <option key={type} value={type}>{type}</option>
                 ))}
               </select>
+              {validationErrors.wasteType && (
+                <p className="mt-1 text-sm text-red-600 flex items-center">
+                  <AlertCircle className="h-4 w-4 mr-1" />
+                  {validationErrors.wasteType}
+                </p>
+              )}
             </div>
 
             {/* Description */}
@@ -170,7 +302,7 @@ export const RequestForm: React.FC<RequestFormProps> = ({ onClose, onSubmit }) =
               </label>
               <textarea
                 value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                onChange={(e) => handleInputChange('description', e.target.value)}
                 rows={3}
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm sm:text-base"
                 placeholder="Describe the waste items (optional)"
@@ -188,23 +320,40 @@ export const RequestForm: React.FC<RequestFormProps> = ({ onClose, onSubmit }) =
                   <input
                     type="text"
                     value={formData.address}
-                    onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                    required
-                    className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm sm:text-base"
+                    onChange={(e) => handleInputChange('address', e.target.value)}
+                    className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm sm:text-base ${
+                      validationErrors.address ? 'border-red-300 bg-red-50' : 'border-gray-300'
+                    }`}
                     placeholder="Enter pickup address"
                   />
                 </div>
+                {validationErrors.address && (
+                  <p className="text-sm text-red-600 flex items-center">
+                    <AlertCircle className="h-4 w-4 mr-1" />
+                    {validationErrors.address}
+                  </p>
+                )}
                 <button
                   type="button"
                   onClick={getCurrentLocation}
-                  className="flex items-center text-green-600 hover:text-green-700 font-medium text-sm"
+                  disabled={locationLoading}
+                  className="flex items-center text-green-600 hover:text-green-700 font-medium text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <MapPin className="h-4 w-4 mr-1" />
-                  Use current location
+                  {locationLoading ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-green-600 mr-2"></div>
+                      Getting location...
+                    </>
+                  ) : (
+                    <>
+                      <MapPin className="h-4 w-4 mr-1" />
+                      Use current location
+                    </>
+                  )}
                 </button>
                 {currentLocation && (
                   <p className="text-xs text-green-600">
-                    ✓ Location detected: {currentLocation.lat.toFixed(4)}, {currentLocation.lng.toFixed(4)}
+                    ✓ Location detected and address updated
                   </p>
                 )}
               </div>
@@ -220,7 +369,7 @@ export const RequestForm: React.FC<RequestFormProps> = ({ onClose, onSubmit }) =
                 <input
                   type="text"
                   value={formData.estimatedAmount}
-                  onChange={(e) => setFormData({ ...formData, estimatedAmount: e.target.value })}
+                  onChange={(e) => handleInputChange('estimatedAmount', e.target.value)}
                   className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm sm:text-base"
                   placeholder="e.g., 2-3 bags, 1 box, etc."
                 />
@@ -237,7 +386,7 @@ export const RequestForm: React.FC<RequestFormProps> = ({ onClose, onSubmit }) =
                 <input
                   type="datetime-local"
                   value={formData.scheduledTime}
-                  onChange={(e) => setFormData({ ...formData, scheduledTime: e.target.value })}
+                  onChange={(e) => handleInputChange('scheduledTime', e.target.value)}
                   min={new Date().toISOString().slice(0, 16)}
                   className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm sm:text-base"
                 />
@@ -277,7 +426,7 @@ export const RequestForm: React.FC<RequestFormProps> = ({ onClose, onSubmit }) =
               </button>
               <button
                 type="submit"
-                disabled={loading || !formData.wasteType || !formData.address}
+                disabled={loading}
                 className="flex-1 bg-green-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm sm:text-base"
               >
                 {loading ? (
@@ -309,7 +458,7 @@ export const RequestForm: React.FC<RequestFormProps> = ({ onClose, onSubmit }) =
           <div className="mt-6 bg-gray-50 border border-gray-200 rounded-lg p-4">
             <h4 className="font-medium text-gray-800 mb-2 text-sm">Debug Info</h4>
             <pre className="text-xs text-gray-600 overflow-auto">
-              {JSON.stringify({ formData, currentLocation }, null, 2)}
+              {JSON.stringify({ formData, currentLocation, validationErrors }, null, 2)}
             </pre>
           </div>
         )}
