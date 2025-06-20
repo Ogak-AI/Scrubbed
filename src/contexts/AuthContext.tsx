@@ -176,7 +176,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           
           // Send welcome email for new sign-ins
           const userType = session.user.user_metadata?.user_type || 'dumper';
-          const userName = session.user.user_metadata?.full_name || session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'there';
+          const userName = getDisplayName(session.user);
           
           if (session.user.email) {
             await sendWelcomeEmail(session.user.email, userName, userType);
@@ -194,6 +194,39 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       subscription.unsubscribe();
     };
   }, []);
+
+  // Helper function to get display name from Google user data
+  const getDisplayName = (supabaseUser: SupabaseUser): string => {
+    // Try to get full name from Google metadata
+    if (supabaseUser.user_metadata?.full_name) {
+      return supabaseUser.user_metadata.full_name;
+    }
+    
+    // Try to get name from Google metadata
+    if (supabaseUser.user_metadata?.name) {
+      return supabaseUser.user_metadata.name;
+    }
+    
+    // Try to construct from first_name and last_name
+    const firstName = supabaseUser.user_metadata?.given_name || supabaseUser.user_metadata?.first_name;
+    const lastName = supabaseUser.user_metadata?.family_name || supabaseUser.user_metadata?.last_name;
+    
+    if (firstName && lastName) {
+      return `${firstName} ${lastName}`;
+    }
+    
+    if (firstName) {
+      return firstName;
+    }
+    
+    // Fallback to email username
+    if (supabaseUser.email) {
+      const emailUsername = supabaseUser.email.split('@')[0];
+      return emailUsername.charAt(0).toUpperCase() + emailUsername.slice(1);
+    }
+    
+    return 'User';
+  };
 
   const fetchUserProfile = async (userId: string) => {
     try {
@@ -251,7 +284,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         const basicUser = {
           id: userId,
           email: session?.user?.email || '',
-          fullName: session?.user?.user_metadata?.full_name || null,
+          fullName: getDisplayName(session?.user!) || null,
           userType: 'dumper' as const, // Default, will be updated during onboarding
           phone: null,
           address: null,
@@ -279,7 +312,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         setUser({
           id: userId,
           email: session?.user?.email || '',
-          fullName: session?.user?.user_metadata?.full_name || null,
+          fullName: getDisplayName(session?.user!) || null,
           userType: 'dumper',
           phone: null,
           address: null,
@@ -324,7 +357,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         const profileData = {
           id: supabaseUser.id,
           email: supabaseUser.email || '',
-          full_name: supabaseUser.user_metadata?.full_name || supabaseUser.user_metadata?.name || null,
+          full_name: getDisplayName(supabaseUser),
           user_type: userType,
           phone: supabaseUser.user_metadata?.phone || null,
           address: null,

@@ -4,6 +4,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useWasteRequests } from '../../hooks/useWasteRequests';
 import { RequestForm } from './RequestForm';
 import { RequestDetails } from './RequestDetails';
+import { ProfileSettings } from '../common/ProfileSettings';
 import type { WasteRequest } from '../../types';
 
 export const DumperDashboard: React.FC = () => {
@@ -11,6 +12,7 @@ export const DumperDashboard: React.FC = () => {
   const { requests, loading, error, createRequest } = useWasteRequests();
   const [showRequestForm, setShowRequestForm] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState<WasteRequest | null>(null);
+  const [showProfileSettings, setShowProfileSettings] = useState(false);
   const [filter, setFilter] = useState<'all' | 'pending' | 'matched' | 'in_progress' | 'completed'>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [createError, setCreateError] = useState<string | null>(null);
@@ -97,6 +99,20 @@ export const DumperDashboard: React.FC = () => {
     setSelectedRequest(null);
   };
 
+  const handleOpenProfileSettings = () => {
+    setShowProfileMenu(false);
+    setShowProfileSettings(true);
+  };
+
+  const handleCloseProfileSettings = () => {
+    setShowProfileSettings(false);
+  };
+
+  // Show profile settings if requested
+  if (showProfileSettings) {
+    return <ProfileSettings onClose={handleCloseProfileSettings} />;
+  }
+
   // Show request details if a request is selected
   if (selectedRequest) {
     return <RequestDetails request={selectedRequest} onClose={handleCloseDetails} />;
@@ -160,10 +176,7 @@ export const DumperDashboard: React.FC = () => {
                 {showProfileMenu && (
                   <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
                     <button
-                      onClick={() => {
-                        setShowProfileMenu(false);
-                        // Add profile settings functionality here
-                      }}
+                      onClick={handleOpenProfileSettings}
                       className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center"
                     >
                       <Settings className="h-4 w-4 mr-2" />
@@ -228,7 +241,13 @@ export const DumperDashboard: React.FC = () => {
                   <Bell className="h-5 w-5 mr-3" />
                   Notifications
                 </button>
-                <button className="w-full flex items-center px-2 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors">
+                <button 
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    handleOpenProfileSettings();
+                  }}
+                  className="w-full flex items-center px-2 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                >
                   <Settings className="h-5 w-5 mr-3" />
                   Profile Settings
                 </button>

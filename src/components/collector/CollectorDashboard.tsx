@@ -4,6 +4,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useCollectors } from '../../hooks/useCollectors';
 import { useWasteRequests } from '../../hooks/useWasteRequests';
 import { CollectorOnboarding } from './CollectorOnboarding';
+import { ProfileSettings } from '../common/ProfileSettings';
 
 export const CollectorDashboard: React.FC = () => {
   const { user, signOut } = useAuth();
@@ -12,6 +13,7 @@ export const CollectorDashboard: React.FC = () => {
   const [isAvailable, setIsAvailable] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [showProfileSettings, setShowProfileSettings] = useState(false);
   const [currentLocation, setCurrentLocation] = useState<{ lat: number; lng: number } | null>(null);
 
   // Filter requests for collector view - only show pending requests within 4km
@@ -102,6 +104,15 @@ export const CollectorDashboard: React.FC = () => {
     }
   };
 
+  const handleOpenProfileSettings = () => {
+    setShowProfileMenu(false);
+    setShowProfileSettings(true);
+  };
+
+  const handleCloseProfileSettings = () => {
+    setShowProfileSettings(false);
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'pending': return 'bg-yellow-100 text-yellow-800';
@@ -140,6 +151,10 @@ export const CollectorDashboard: React.FC = () => {
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600"></div>
       </div>
     );
+  }
+
+  if (showProfileSettings) {
+    return <ProfileSettings onClose={handleCloseProfileSettings} />;
   }
 
   if (!myCollectorProfile) {
@@ -201,10 +216,7 @@ export const CollectorDashboard: React.FC = () => {
                 {showProfileMenu && (
                   <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
                     <button
-                      onClick={() => {
-                        setShowProfileMenu(false);
-                        // Add profile settings functionality here
-                      }}
+                      onClick={handleOpenProfileSettings}
                       className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center"
                     >
                       <Settings className="h-4 w-4 mr-2" />
@@ -286,7 +298,13 @@ export const CollectorDashboard: React.FC = () => {
                   <Bell className="h-5 w-5 mr-3" />
                   Notifications
                 </button>
-                <button className="w-full flex items-center px-2 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors">
+                <button 
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    handleOpenProfileSettings();
+                  }}
+                  className="w-full flex items-center px-2 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                >
                   <Settings className="h-5 w-5 mr-3" />
                   Profile Settings
                 </button>
