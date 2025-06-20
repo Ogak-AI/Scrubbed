@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { ArrowLeft, MapPin, Camera, Calendar, Package, AlertCircle, CheckCircle, RefreshCw, Menu, X } from 'lucide-react';
+import { ArrowLeft, MapPin, Camera, Calendar, Package, AlertCircle, CheckCircle, RefreshCw, Upload, X } from 'lucide-react';
 import { WASTE_TYPES } from '../../types';
+import { supabase } from '../../lib/supabase';
 
 interface RequestFormProps {
   onClose: () => void;
@@ -18,6 +19,7 @@ export const RequestForm: React.FC<RequestFormProps> = ({ onClose, onSubmit }) =
   });
   const [loading, setLoading] = useState(false);
   const [locationLoading, setLocationLoading] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [validationErrors, setValidationErrors] = useState<{[key: string]: string}>({});
   const [success, setSuccess] = useState(false);
@@ -36,6 +38,85 @@ export const RequestForm: React.FC<RequestFormProps> = ({ onClose, onSubmit }) =
     
     setValidationErrors(errors);
     return Object.keys(errors).length === 0;
+  };
+
+  const uploadPhotoToSupabase = async (file: File): Promise<string> => {
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+    const filePath = `waste-photos/${fileName}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from('waste-photos')
+      .upload(filePath, file);
+
+    if (uploadError) {
+      throw uploadError;
+    }
+
+    const { data } = supabase.storage
+      .from('waste-photos')
+      .getPublicUrl(filePath);
+
+    return data.publicUrl;
+  };
+
+  const handlePhotoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
+
+    setUploadingPhoto(true);
+    setError(null);
+
+    try {
+      const newPhotos: string[] = [];
+      
+      for (let i = 0; i < Math.min(files.length, 5 - formData.photos.length); i++) {
+        const file = files[i];
+        
+        // Validate file type
+        if (!file.type.startsWith('image/')) {
+          throw new Error('Please select only image files');
+        }
+        
+        // Validate file size (max 5MB)
+        if (file.size > 5 * 1024 * 1024) {
+          throw new Error('Image size must be less than 5MB');
+        }
+        
+        try {
+          // Try to upload to Supabase Storage first
+          const photoUrl = await uploadPhotoToSupabase(file);
+          newPhotos.push(photoUrl);
+        } catch (storageError) {
+          console.warn('Supabase storage not configured, using base64 fallback');
+          // Fallback to base64 for demo purposes
+          const base64 = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result as string);
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+          });
+          newPhotos.push(base64);
+        }
+      }
+      
+      setFormData(prev => ({
+        ...prev,
+        photos: [...prev.photos, ...newPhotos]
+      }));
+      
+    } catch (err: any) {
+      setError(err.message || 'Failed to upload photos');
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
+
+  const removePhoto = (index: number) => {
+    setFormData(prev => ({
+      ...prev,
+      photos: prev.photos.filter((_, i) => i !== index)
+    }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -401,17 +482,69 @@ export const RequestForm: React.FC<RequestFormProps> = ({ onClose, onSubmit }) =
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Photos (Optional)
               </label>
+              
+              {/* Photo Upload Area */}
               <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 sm:p-6 text-center hover:border-gray-400 transition-colors">
-                <Camera className="h-6 w-6 sm:h-8 sm:w-8 text-gray-400 mx-auto mb-2" />
-                <p className="text-gray-600 text-sm mb-2">Add photos of your waste</p>
-                <button
-                  type="button"
-                  className="text-green-600 hover:text-green-700 font-medium text-sm"
-                >
-                  Choose Files
-                </button>
-                <p className="text-xs text-gray-500 mt-1">Coming soon - photo upload feature</p>
+                <input
+                  type="file"
+                  id="photo-upload"
+                  multiple
+                  accept="image/*"
+                  onChange={handlePhotoUpload}
+                  className="hidden"
+                  disabled={uploadingPhoto || formData.photos.length >= 5}
+                />
+                
+                {uploadingPhoto ? (
+                  <div className="flex items-center justify-center">
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-green-600 mr-2"></div>
+                    <span className="text-gray-600">Uploading photos...</span>
+                  </div>
+                ) : (
+                  <>
+                    <Upload className="h-6 w-6 sm:h-8 sm:w-8 text-gray-400 mx-auto mb-2" />
+                    <p className="text-gray-600 text-sm mb-2">Add photos of your waste</p>
+                    <label
+                      htmlFor="photo-upload"
+                      className={`inline-block text-green-600 hover:text-green-700 font-medium text-sm cursor-pointer ${
+                        formData.photos.length >= 5 ? 'opacity-50 cursor-not-allowed' : ''
+                      }`}
+                    >
+                      {formData.photos.length >= 5 ? 'Maximum 5 photos' : 'Choose Files'}
+                    </label>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Max 5 photos, 5MB each. JPG, PNG, GIF supported.
+                    </p>
+                  </>
+                )}
               </div>
+
+              {/* Photo Preview */}
+              {formData.photos.length > 0 && (
+                <div className="mt-4">
+                  <p className="text-sm font-medium text-gray-700 mb-2">
+                    Uploaded Photos ({formData.photos.length}/5)
+                  </p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    {formData.photos.map((photo, index) => (
+                      <div key={index} className="relative group">
+                        <img
+                          src={photo}
+                          alt={`Upload ${index + 1}`}
+                          className="w-full h-24 object-cover rounded-lg border border-gray-200"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => removePhoto(index)}
+                          className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Submit Button */}
@@ -452,16 +585,6 @@ export const RequestForm: React.FC<RequestFormProps> = ({ onClose, onSubmit }) =
             <li>4. Track your collection in real-time</li>
           </ol>
         </div>
-
-        {/* Debug Info (only in development) */}
-        {process.env.NODE_ENV === 'development' && (
-          <div className="mt-6 bg-gray-50 border border-gray-200 rounded-lg p-4">
-            <h4 className="font-medium text-gray-800 mb-2 text-sm">Debug Info</h4>
-            <pre className="text-xs text-gray-600 overflow-auto">
-              {JSON.stringify({ formData, currentLocation, validationErrors }, null, 2)}
-            </pre>
-          </div>
-        )}
       </div>
     </div>
   );

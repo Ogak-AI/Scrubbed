@@ -7,13 +7,31 @@ import { CollectorOnboarding } from './CollectorOnboarding';
 
 export const CollectorDashboard: React.FC = () => {
   const { user, signOut } = useAuth();
-  const { myCollectorProfile, loading: collectorsLoading, createCollectorProfile, updateAvailability } = useCollectors();
+  const { myCollectorProfile, loading: collectorsLoading, createCollectorProfile, updateAvailability, updateLocation } = useCollectors();
   const { requests, loading: requestsLoading, acceptRequest, updateRequestStatus, error } = useWasteRequests();
   const [isAvailable, setIsAvailable] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [currentLocation, setCurrentLocation] = useState<{ lat: number; lng: number } | null>(null);
 
-  // Filter requests for collector view
-  const availableRequests = requests.filter(r => r.status === 'pending' && !r.collectorId);
+  // Filter requests for collector view - only show pending requests within 4km
+  const availableRequests = requests.filter(r => {
+    if (r.status !== 'pending' || r.collectorId) return false;
+    
+    // If we have current location, filter by distance
+    if (currentLocation && r.location) {
+      const distance = calculateDistance(
+        currentLocation.lat,
+        currentLocation.lng,
+        r.location.lat,
+        r.location.lng
+      );
+      return distance <= 4; // 4km radius
+    }
+    
+    return true; // Show all if no location available
+  });
+
   const myJobs = requests.filter(r => r.collectorId === user?.id);
 
   useEffect(() => {
@@ -21,6 +39,34 @@ export const CollectorDashboard: React.FC = () => {
       setIsAvailable(myCollectorProfile.isAvailable);
     }
   }, [myCollectorProfile]);
+
+  // Get current location on component mount
+  useEffect(() => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const location = {
+            lat: position.coords.latitude,
+            lng: position.coords.longitude,
+          };
+          setCurrentLocation(location);
+          
+          // Update location in database if collector profile exists
+          if (myCollectorProfile) {
+            updateLocation(location).catch(console.error);
+          }
+        },
+        (error) => {
+          console.error('Error getting location:', error);
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 300000 // 5 minutes
+        }
+      );
+    }
+  }, [myCollectorProfile, updateLocation]);
 
   const handleCompleteOnboarding = async (profileData: any) => {
     try {
@@ -76,9 +122,16 @@ export const CollectorDashboard: React.FC = () => {
   };
 
   const calculateDistance = (lat1: number, lng1: number, lat2: number, lng2: number) => {
-    // Simplified distance calculation for demo
-    const distance = Math.sqrt(Math.pow(lat2 - lat1, 2) + Math.pow(lng2 - lng1, 2)) * 69; // Rough miles
-    return distance.toFixed(1);
+    const R = 6371; // Radius of the Earth in kilometers
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLng = (lng2 - lng1) * Math.PI / 180;
+    const a = 
+      Math.sin(dLat/2) * Math.sin(dLat/2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+      Math.sin(dLng/2) * Math.sin(dLng/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    const distance = R * c; // Distance in kilometers
+    return distance;
   };
 
   if (collectorsLoading) {
@@ -131,22 +184,45 @@ export const CollectorDashboard: React.FC = () => {
                 <Bell className="h-5 w-5" />
               </button>
               
-              <div className="flex items-center space-x-2">
-                <div className="p-2 bg-green-100 rounded-full">
-                  <User className="h-5 w-5 text-green-600" />
-                </div>
-                <div className="hidden xl:block">
-                  <p className="text-sm font-medium text-gray-900">{user?.fullName}</p>
-                  <p className="text-xs text-gray-600">Collector</p>
-                </div>
+              <div className="relative">
+                <button
+                  onClick={() => setShowProfileMenu(!showProfileMenu)}
+                  className="flex items-center space-x-2 p-2 rounded-lg hover:bg-gray-100 transition-colors"
+                >
+                  <div className="p-2 bg-green-100 rounded-full">
+                    <User className="h-5 w-5 text-green-600" />
+                  </div>
+                  <div className="hidden xl:block text-left">
+                    <p className="text-sm font-medium text-gray-900">{user?.fullName}</p>
+                    <p className="text-xs text-gray-600">Collector</p>
+                  </div>
+                </button>
+                
+                {showProfileMenu && (
+                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
+                    <button
+                      onClick={() => {
+                        setShowProfileMenu(false);
+                        // Add profile settings functionality here
+                      }}
+                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center"
+                    >
+                      <Settings className="h-4 w-4 mr-2" />
+                      Profile Settings
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowProfileMenu(false);
+                        signOut();
+                      }}
+                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center"
+                    >
+                      <LogOut className="h-4 w-4 mr-2" />
+                      Sign Out
+                    </button>
+                  </div>
+                )}
               </div>
-              
-              <button
-                onClick={signOut}
-                className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100"
-              >
-                <LogOut className="h-5 w-5" />
-              </button>
               
               {/* Badge */}
               <div className="ml-2">
@@ -210,6 +286,10 @@ export const CollectorDashboard: React.FC = () => {
                   <Bell className="h-5 w-5 mr-3" />
                   Notifications
                 </button>
+                <button className="w-full flex items-center px-2 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors">
+                  <Settings className="h-5 w-5 mr-3" />
+                  Profile Settings
+                </button>
                 <button
                   onClick={signOut}
                   className="w-full flex items-center px-2 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
@@ -234,6 +314,18 @@ export const CollectorDashboard: React.FC = () => {
           </div>
         )}
 
+        {/* Location Status */}
+        {currentLocation && (
+          <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+            <div className="flex items-center">
+              <MapPin className="h-5 w-5 text-blue-500 mr-2" />
+              <p className="text-blue-700 text-sm">
+                Location active - showing requests within 4km radius
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Stats Grid */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-6 sm:mb-8">
           <div className="bg-white p-4 sm:p-6 rounded-xl border border-gray-200">
@@ -249,7 +341,7 @@ export const CollectorDashboard: React.FC = () => {
           <div className="bg-white p-4 sm:p-6 rounded-xl border border-gray-200">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs sm:text-sm font-medium text-gray-600">Available</p>
+                <p className="text-xs sm:text-sm font-medium text-gray-600">Available Nearby</p>
                 <p className="text-lg sm:text-2xl font-bold text-green-600">{availableRequests.length}</p>
               </div>
               <Clock className="h-6 w-6 sm:h-8 sm:w-8 text-green-600" />
@@ -284,7 +376,9 @@ export const CollectorDashboard: React.FC = () => {
           <div className="bg-white rounded-xl border border-gray-200">
             <div className="p-4 sm:p-6 border-b border-gray-200">
               <h3 className="text-lg font-semibold text-gray-900">Available Requests</h3>
-              <p className="text-sm text-gray-600">New collection requests in your area</p>
+              <p className="text-sm text-gray-600">
+                {currentLocation ? 'Requests within 4km of your location' : 'All pending requests'}
+              </p>
             </div>
             
             <div className="p-4 sm:p-6">
@@ -296,7 +390,12 @@ export const CollectorDashboard: React.FC = () => {
                 <div className="text-center py-8">
                   <Trash2 className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                   <h4 className="text-lg font-medium text-gray-900 mb-2">No requests available</h4>
-                  <p className="text-gray-600 text-sm">Check back later for new collection opportunities.</p>
+                  <p className="text-gray-600 text-sm">
+                    {currentLocation 
+                      ? 'No collection requests within 4km of your location.' 
+                      : 'Check back later for new collection opportunities.'
+                    }
+                  </p>
                 </div>
               ) : (
                 <div className="space-y-4">
@@ -323,10 +422,12 @@ export const CollectorDashboard: React.FC = () => {
                           <MapPin className="h-4 w-4 mr-1 flex-shrink-0" />
                           <span className="truncate">{request.address}</span>
                         </div>
-                        <div className="flex items-center">
-                          <Navigation className="h-4 w-4 mr-1 flex-shrink-0" />
-                          {calculateDistance(40.7128, -74.0060, request.location.lat, request.location.lng)} mi
-                        </div>
+                        {currentLocation && (
+                          <div className="flex items-center">
+                            <Navigation className="h-4 w-4 mr-1 flex-shrink-0" />
+                            {calculateDistance(currentLocation.lat, currentLocation.lng, request.location.lat, request.location.lng).toFixed(1)} km away
+                          </div>
+                        )}
                       </div>
                       
                       {request.scheduledTime && (
@@ -388,10 +489,12 @@ export const CollectorDashboard: React.FC = () => {
                           <MapPin className="h-4 w-4 mr-1 flex-shrink-0" />
                           <span className="truncate">{job.address}</span>
                         </div>
-                        <div className="flex items-center">
-                          <Navigation className="h-4 w-4 mr-1 flex-shrink-0" />
-                          {calculateDistance(40.7128, -74.0060, job.location.lat, job.location.lng)} mi
-                        </div>
+                        {currentLocation && (
+                          <div className="flex items-center">
+                            <Navigation className="h-4 w-4 mr-1 flex-shrink-0" />
+                            {calculateDistance(currentLocation.lat, currentLocation.lng, job.location.lat, job.location.lng).toFixed(1)} km away
+                          </div>
+                        )}
                       </div>
                       
                       {job.scheduledTime && (

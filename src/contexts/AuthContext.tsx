@@ -49,6 +49,76 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     return 'https://scrubbed.online';
   };
 
+  // Send welcome email function
+  const sendWelcomeEmail = async (userEmail: string, userName: string, userType: 'dumper' | 'collector') => {
+    try {
+      const emailContent = {
+        to: userEmail,
+        subject: 'Welcome to Scrubbed - Your Google Account is Connected!',
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+            <div style="text-align: center; margin-bottom: 30px;">
+              <h1 style="color: #16a34a; margin: 0;">Welcome to Scrubbed!</h1>
+              <p style="color: #6b7280; margin: 10px 0;">Smart Waste Management Made Simple</p>
+            </div>
+            
+            <div style="background: #f9fafb; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+              <h2 style="color: #374151; margin-top: 0;">Hi ${userName}!</h2>
+              <p style="color: #6b7280; line-height: 1.6;">
+                Your Google account has been successfully connected to <strong>scrubbed.online</strong>. 
+                You're now ready to ${userType === 'dumper' ? 'request waste collection services' : 'start earning money as a waste collector'}!
+              </p>
+            </div>
+
+            <div style="margin-bottom: 20px;">
+              <h3 style="color: #374151;">What's next?</h3>
+              <ul style="color: #6b7280; line-height: 1.6;">
+                ${userType === 'dumper' ? `
+                  <li>Create your first waste collection request</li>
+                  <li>Get matched with professional collectors in your area</li>
+                  <li>Track your collections in real-time</li>
+                  <li>Rate and review your collectors</li>
+                ` : `
+                  <li>Complete your collector profile setup</li>
+                  <li>Browse available collection requests</li>
+                  <li>Start accepting jobs and earning money</li>
+                  <li>Build your reputation with customer ratings</li>
+                `}
+              </ul>
+            </div>
+
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="https://scrubbed.online" 
+                 style="background: #16a34a; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">
+                Get Started Now
+              </a>
+            </div>
+
+            <div style="border-top: 1px solid #e5e7eb; padding-top: 20px; text-align: center; color: #9ca3af; font-size: 14px;">
+              <p>This email was sent because you connected your Google account to Scrubbed.</p>
+              <p>If you didn't create this account, please ignore this email.</p>
+              <p>&copy; 2025 Scrubbed. All rights reserved.</p>
+            </div>
+          </div>
+        `
+      };
+
+      // Try to send email via Supabase Edge Function (if available)
+      try {
+        await supabase.functions.invoke('send-welcome-email', {
+          body: emailContent
+        });
+        console.log('Welcome email sent successfully');
+      } catch (emailError) {
+        console.log('Welcome email service not configured, skipping email send');
+        // Don't throw error - email is nice to have but not critical
+      }
+    } catch (error) {
+      console.error('Error sending welcome email:', error);
+      // Don't throw error - email is nice to have but not critical
+    }
+  };
+
   useEffect(() => {
     let mounted = true;
 
@@ -103,6 +173,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         // Create profile if it doesn't exist (for new Google users)
         if (event === 'SIGNED_IN') {
           await ensureProfileExists(session.user);
+          
+          // Send welcome email for new sign-ins
+          const userType = session.user.user_metadata?.user_type || 'dumper';
+          const userName = session.user.user_metadata?.full_name || session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'there';
+          
+          if (session.user.email) {
+            await sendWelcomeEmail(session.user.email, userName, userType);
+          }
         }
         await fetchUserProfile(session.user.id);
       } else {

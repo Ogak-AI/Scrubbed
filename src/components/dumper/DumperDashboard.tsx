@@ -12,6 +12,7 @@ export const DumperDashboard: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [createError, setCreateError] = useState<string | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
 
   const filteredRequests = requests.filter(request => {
     const matchesFilter = filter === 'all' || request.status === filter;
@@ -126,22 +127,45 @@ export const DumperDashboard: React.FC = () => {
                 <Bell className="h-5 w-5" />
               </button>
               
-              <div className="flex items-center space-x-2">
-                <div className="p-2 bg-green-100 rounded-full">
-                  <User className="h-5 w-5 text-green-600" />
-                </div>
-                <div className="hidden xl:block">
-                  <p className="text-sm font-medium text-gray-900">{user?.fullName || user?.email}</p>
-                  <p className="text-xs text-gray-600">{user?.email}</p>
-                </div>
+              <div className="relative">
+                <button
+                  onClick={() => setShowProfileMenu(!showProfileMenu)}
+                  className="flex items-center space-x-2 p-2 rounded-lg hover:bg-gray-100 transition-colors"
+                >
+                  <div className="p-2 bg-green-100 rounded-full">
+                    <User className="h-5 w-5 text-green-600" />
+                  </div>
+                  <div className="hidden xl:block text-left">
+                    <p className="text-sm font-medium text-gray-900">{user?.fullName || user?.email}</p>
+                    <p className="text-xs text-gray-600">{user?.email}</p>
+                  </div>
+                </button>
+                
+                {showProfileMenu && (
+                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
+                    <button
+                      onClick={() => {
+                        setShowProfileMenu(false);
+                        // Add profile settings functionality here
+                      }}
+                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center"
+                    >
+                      <Settings className="h-4 w-4 mr-2" />
+                      Profile Settings
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowProfileMenu(false);
+                        signOut();
+                      }}
+                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center"
+                    >
+                      <LogOut className="h-4 w-4 mr-2" />
+                      Sign Out
+                    </button>
+                  </div>
+                )}
               </div>
-              
-              <button
-                onClick={signOut}
-                className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100"
-              >
-                <LogOut className="h-5 w-5" />
-              </button>
               
               {/* Badge */}
               <div className="ml-2">
@@ -187,6 +211,10 @@ export const DumperDashboard: React.FC = () => {
                 <button className="w-full flex items-center px-2 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors">
                   <Bell className="h-5 w-5 mr-3" />
                   Notifications
+                </button>
+                <button className="w-full flex items-center px-2 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors">
+                  <Settings className="h-5 w-5 mr-3" />
+                  Profile Settings
                 </button>
                 <button
                   onClick={signOut}
