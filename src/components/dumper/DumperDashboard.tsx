@@ -3,11 +3,14 @@ import { Plus, MapPin, Clock, Trash2, User, Settings, LogOut, Bell, Search, Filt
 import { useAuth } from '../../contexts/AuthContext';
 import { useWasteRequests } from '../../hooks/useWasteRequests';
 import { RequestForm } from './RequestForm';
+import { RequestDetails } from './RequestDetails';
+import type { WasteRequest } from '../../types';
 
 export const DumperDashboard: React.FC = () => {
   const { user, signOut } = useAuth();
   const { requests, loading, error, createRequest } = useWasteRequests();
   const [showRequestForm, setShowRequestForm] = useState(false);
+  const [selectedRequest, setSelectedRequest] = useState<WasteRequest | null>(null);
   const [filter, setFilter] = useState<'all' | 'pending' | 'matched' | 'in_progress' | 'completed'>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [createError, setCreateError] = useState<string | null>(null);
@@ -85,6 +88,19 @@ export const DumperDashboard: React.FC = () => {
       // setShowRequestForm(false);
     }
   };
+
+  const handleViewDetails = (request: WasteRequest) => {
+    setSelectedRequest(request);
+  };
+
+  const handleCloseDetails = () => {
+    setSelectedRequest(null);
+  };
+
+  // Show request details if a request is selected
+  if (selectedRequest) {
+    return <RequestDetails request={selectedRequest} onClose={handleCloseDetails} />;
+  }
 
   if (showRequestForm) {
     return (
@@ -391,7 +407,10 @@ export const DumperDashboard: React.FC = () => {
                       </div>
                       
                       <div className="mt-4 sm:mt-0 sm:ml-4">
-                        <button className="text-green-600 hover:text-green-700 font-medium text-sm">
+                        <button 
+                          onClick={() => handleViewDetails(request)}
+                          className="text-green-600 hover:text-green-700 font-medium text-sm"
+                        >
                           View Details
                         </button>
                       </div>
