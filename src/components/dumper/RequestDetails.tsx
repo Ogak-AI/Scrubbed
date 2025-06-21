@@ -1,5 +1,6 @@
 import React from 'react';
-import { ArrowLeft, MapPin, Clock, Package, User, Phone, Mail, Star, MessageSquare, Camera, Calendar, Trash2 } from 'lucide-react';
+import { ArrowLeft, MapPin, Clock, Package, User, Phone, Mail, Star, MessageSquare, Camera, Calendar, Trash2, AlertTriangle } from 'lucide-react';
+import { useWasteRequests } from '../../hooks/useWasteRequests';
 import type { WasteRequest } from '../../types';
 
 interface RequestDetailsProps {
@@ -8,6 +9,10 @@ interface RequestDetailsProps {
 }
 
 export const RequestDetails: React.FC<RequestDetailsProps> = ({ request, onClose }) => {
+  const { updateRequestStatus } = useWasteRequests();
+  const [cancelling, setCancelling] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'pending': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
@@ -25,7 +30,7 @@ export const RequestDetails: React.FC<RequestDetailsProps> = ({ request, onClose
       case 'matched': return <User className="h-4 w-4" />;
       case 'in_progress': return <Trash2 className="h-4 w-4" />;
       case 'completed': return <Star className="h-4 w-4" />;
-      case 'cancelled': return <ArrowLeft className="h-4 w-4" />;
+      case 'cancelled': return <AlertTriangle className="h-4 w-4" />;
       default: return <Clock className="h-4 w-4" />;
     }
   };
@@ -67,6 +72,26 @@ export const RequestDetails: React.FC<RequestDetailsProps> = ({ request, onClose
     }
   };
 
+  const handleCancelRequest = async () => {
+    if (!window.confirm('Are you sure you want to cancel this request? This action cannot be undone.')) {
+      return;
+    }
+
+    setCancelling(true);
+    setError(null);
+
+    try {
+      await updateRequestStatus(request.id, 'cancelled');
+      // The request status will be updated via the hook, which will trigger a re-render
+      // We could close the details view or keep it open to show the updated status
+    } catch (err: any) {
+      console.error('Error cancelling request:', err);
+      setError(err.message || 'Failed to cancel request. Please try again.');
+    } finally {
+      setCancelling(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -88,6 +113,16 @@ export const RequestDetails: React.FC<RequestDetailsProps> = ({ request, onClose
       </header>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8">
+        {/* Error Display */}
+        {error && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+            <div className="flex items-center">
+              <AlertTriangle className="h-5 w-5 text-red-500 mr-2" />
+              <p className="text-red-600 text-sm">{error}</p>
+            </div>
+          </div>
+        )}
+
         <div className="space-y-4 sm:space-y-6 lg:grid lg:grid-cols-3 lg:gap-6 lg:space-y-0">
           {/* Main Content */}
           <div className="lg:col-span-2 space-y-4 sm:space-y-6">
@@ -248,8 +283,22 @@ export const RequestDetails: React.FC<RequestDetailsProps> = ({ request, onClose
               
               <div className="space-y-3">
                 {request.status === 'pending' && (
-                  <button className="w-full bg-red-600 text-white py-2.5 px-4 rounded-lg font-medium hover:bg-red-700 transition-colors text-sm">
-                    Cancel Request
+                  <button 
+                    onClick={handleCancelRequest}
+                    disabled={cancelling}
+                    className="w-full bg-red-600 text-white py-2.5 px-4 rounded-lg font-medium hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm flex items-center justify-center"
+                  >
+                    {cancelling ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                        Cancelling...
+                      </>
+                    ) : (
+                      <>
+                        <AlertTriangle className="h-4 w-4 mr-2" />
+                        Cancel Request
+                      </>
+                    )}
                   </button>
                 )}
                 
@@ -269,10 +318,6 @@ export const RequestDetails: React.FC<RequestDetailsProps> = ({ request, onClose
                     Rate & Review
                   </button>
                 )}
-                
-                <button className="w-full border border-gray-300 text-gray-700 py-2.5 px-4 rounded-lg font-medium hover:bg-gray-50 transition-colors text-sm">
-                  Share Request
-                </button>
               </div>
             </div>
 
