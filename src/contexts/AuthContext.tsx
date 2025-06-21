@@ -30,15 +30,10 @@ interface AuthProviderProps {
   children: ReactNode;
 }
 
-// Session timeout configuration
-const SESSION_TIMEOUT = 60 * 1000; // 1 minute in milliseconds
-const ACTIVITY_CHECK_INTERVAL = 10 * 1000; // Check every 10 seconds
-
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
-  const [lastActivity, setLastActivity] = useState<number>(Date.now());
   const [verification, setVerification] = useState<VerificationState>({
     emailSent: false,
     phoneSent: false,
@@ -53,101 +48,38 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     return 'https://scrubbed.online';
   };
 
-  // Clear session and force fresh authentication
-  const clearSessionAndReload = async () => {
-    console.log('Clearing session due to timeout/inactivity');
+  // Clear all session data completely
+  const clearAllSessionData = async () => {
+    console.log('Clearing all session data...');
     
-    // Clear all local state
-    setUser(null);
-    setSession(null);
-    setVerification({
-      emailSent: false,
-      phoneSent: false,
-      emailVerified: false,
-      phoneVerified: false,
-      isVerifying: false,
-      error: null,
-    });
-
     // Clear Supabase session
     await supabase.auth.signOut();
     
-    // Clear any stored session data
-    localStorage.removeItem('supabase.auth.token');
+    // Clear all possible storage locations
+    localStorage.clear();
     sessionStorage.clear();
     
-    // Force reload to start fresh
-    window.location.reload();
-  };
-
-  // Track user activity
-  const updateActivity = () => {
-    setLastActivity(Date.now());
-  };
-
-  // Set up activity tracking
-  useEffect(() => {
-    const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart', 'click'];
+    // Clear specific Supabase keys that might persist
+    const keysToRemove = [
+      'supabase.auth.token',
+      'sb-auth-token',
+      'supabase-auth-token',
+      'supabase.auth.session',
+      'sb-session',
+    ];
     
-    const handleActivity = () => {
-      updateActivity();
-    };
-
-    // Add event listeners for user activity
-    events.forEach(event => {
-      document.addEventListener(event, handleActivity, true);
+    keysToRemove.forEach(key => {
+      localStorage.removeItem(key);
+      sessionStorage.removeItem(key);
     });
-
-    return () => {
-      events.forEach(event => {
-        document.removeEventListener(event, handleActivity, true);
-      });
-    };
-  }, []);
-
-  // Session timeout checker
-  useEffect(() => {
-    if (!session) return;
-
-    const timeoutChecker = setInterval(() => {
-      const now = Date.now();
-      const timeSinceLastActivity = now - lastActivity;
-
-      console.log(`Time since last activity: ${timeSinceLastActivity}ms`);
-
-      if (timeSinceLastActivity > SESSION_TIMEOUT) {
-        console.log('Session timeout reached, clearing session');
-        clearSessionAndReload();
-      }
-    }, ACTIVITY_CHECK_INTERVAL);
-
-    return () => clearInterval(timeoutChecker);
-  }, [session, lastActivity]);
-
-  // Clear session on page refresh/reload
-  useEffect(() => {
-    const handleBeforeUnload = () => {
-      console.log('Page unloading, clearing session');
-      localStorage.removeItem('supabase.auth.token');
-      sessionStorage.clear();
-    };
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'hidden') {
-        console.log('Page hidden, clearing session');
-        localStorage.removeItem('supabase.auth.token');
-        sessionStorage.clear();
-      }
-    };
-
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
-    return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, []);
+    
+    // Clear cookies if any
+    document.cookie.split(";").forEach(function(c) { 
+      document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/"); 
+    });
+    
+    console.log('All session data cleared');
+  };
 
   // Send welcome email function
   const sendWelcomeEmail = async (userEmail: string, userName: string, userType: 'dumper' | 'collector') => {
@@ -221,11 +153,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
     const initializeAuth = async () => {
       try {
-        console.log('Initializing auth with aggressive session management...');
+        console.log('Initializing auth - clearing all existing sessions...');
         
-        // Clear any existing session data on initialization
-        localStorage.removeItem('supabase.auth.token');
-        sessionStorage.clear();
+        // ALWAYS clear all session data on page load/refresh
+        await clearAllSessionData();
         
         // Check if we're handling an OAuth callback
         const urlParams = new URLSearchParams(window.location.search);
@@ -249,28 +180,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             console.log('Fresh session set successfully from OAuth callback');
             // Clean up URL parameters
             window.history.replaceState({}, document.title, window.location.pathname);
-            // Update activity timestamp
-            updateActivity();
           }
         } else {
-          // No OAuth callback, check for existing session
-          const { data: { session }, error } = await supabase.auth.getSession();
-          
-          if (error) {
-            console.error('Error getting session:', error);
-            setLoading(false);
-            return;
-          }
-
-          if (session) {
-            console.log('Existing session found, but clearing it for fresh start');
-            await supabase.auth.signOut();
-            setLoading(false);
-            return;
-          }
+          // No OAuth callback and no existing session allowed
+          console.log('No OAuth callback - user must sign in');
+          setLoading(false);
+          return;
         }
 
-        // Get current session after potential OAuth setup
+        // Get current session after OAuth setup
         const { data: { session }, error } = await supabase.auth.getSession();
 
         if (!mounted) return;
@@ -285,7 +203,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         setSession(session);
         
         if (session?.user) {
-          updateActivity(); // Mark as active
           await fetchUserProfile(session.user.id);
         } else {
           setLoading(false);
@@ -310,8 +227,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       setSession(session);
       
       if (session?.user) {
-        updateActivity(); // Mark as active
-        
         // Create profile if it doesn't exist (for new Google users)
         if (event === 'SIGNED_IN') {
           await ensureProfileExists(session.user);
@@ -519,9 +434,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     
     try {
       // Clear any existing session before signing in
-      await supabase.auth.signOut();
-      localStorage.removeItem('supabase.auth.token');
-      sessionStorage.clear();
+      await clearAllSessionData();
       
       const redirectTo = getRedirectUrl();
       
@@ -554,7 +467,28 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const signOut = async () => {
     try {
-      await clearSessionAndReload();
+      console.log('Signing out and clearing all session data...');
+      
+      // Clear all session data
+      await clearAllSessionData();
+      
+      // Reset verification state
+      setVerification({
+        emailSent: false,
+        phoneSent: false,
+        emailVerified: false,
+        phoneVerified: false,
+        isVerifying: false,
+        error: null,
+      });
+
+      // Reset user and session state
+      setUser(null);
+      setSession(null);
+      
+      // Redirect to the custom domain
+      const redirectUrl = getRedirectUrl();
+      window.location.href = redirectUrl;
     } catch (error) {
       console.error('Error signing out:', error);
       throw error;
@@ -612,7 +546,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       const updatedUser = { ...user, ...updates };
       console.log('Updated user state:', updatedUser);
       setUser(updatedUser);
-      updateActivity(); // Mark as active after update
     } catch (error) {
       console.error('Error updating profile:', error);
       throw error;
@@ -637,7 +570,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         emailSent: true,
         isVerifying: false,
       }));
-      updateActivity();
     } catch (error: any) {
       console.error('Error resending email verification:', error);
       setVerification(prev => ({
@@ -664,7 +596,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         phoneSent: true,
         isVerifying: false,
       }));
-      updateActivity();
     } catch (error: any) {
       console.error('Error sending phone verification:', error);
       setVerification(prev => ({
@@ -704,7 +635,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         phoneVerified: true,
         isVerifying: false,
       }));
-      updateActivity();
     } catch (error: any) {
       console.error('Error verifying phone code:', error);
       setVerification(prev => ({

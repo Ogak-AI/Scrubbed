@@ -38,9 +38,9 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
   auth: {
     // Use the current origin for redirects, prioritizing custom domain
     redirectTo: getCurrentOrigin(),
-    // Reduce token refresh frequency to improve performance
-    autoRefreshToken: true,
-    persistSession: true,
+    // DISABLE session persistence - require fresh sign-in every time
+    autoRefreshToken: false,
+    persistSession: false,
     detectSessionInUrl: true,
   },
   // Add connection pooling and performance optimizations
