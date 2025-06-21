@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowLeft, MapPin, Clock, Package, User, Phone, Mail, Star, MessageSquare, Camera, Calendar, Trash2, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, MapPin, Clock, Package, User, Phone, Mail, Star, MessageSquare, Camera, Calendar, Trash2, AlertTriangle, X } from 'lucide-react';
 import { useWasteRequests } from '../../hooks/useWasteRequests';
 import type { WasteRequest } from '../../types';
 
@@ -30,7 +30,7 @@ export const RequestDetails: React.FC<RequestDetailsProps> = ({ request, onClose
       case 'matched': return <User className="h-4 w-4" />;
       case 'in_progress': return <Trash2 className="h-4 w-4" />;
       case 'completed': return <Star className="h-4 w-4" />;
-      case 'cancelled': return <AlertTriangle className="h-4 w-4" />;
+      case 'cancelled': return <X className="h-4 w-4" />;
       default: return <Clock className="h-4 w-4" />;
     }
   };
@@ -81,15 +81,26 @@ export const RequestDetails: React.FC<RequestDetailsProps> = ({ request, onClose
     setError(null);
 
     try {
+      console.log('Cancelling request:', request.id);
       await updateRequestStatus(request.id, 'cancelled');
-      // The request status will be updated via the hook, which will trigger a re-render
-      // We could close the details view or keep it open to show the updated status
+      console.log('Request cancelled successfully');
+      
+      // Show success message briefly before closing or updating
+      setTimeout(() => {
+        setCancelling(false);
+        // Optionally close the details view after successful cancellation
+        // onClose();
+      }, 1000);
+      
     } catch (err: any) {
       console.error('Error cancelling request:', err);
       setError(err.message || 'Failed to cancel request. Please try again.');
-    } finally {
       setCancelling(false);
     }
+  };
+
+  const dismissError = () => {
+    setError(null);
   };
 
   return (
@@ -116,9 +127,27 @@ export const RequestDetails: React.FC<RequestDetailsProps> = ({ request, onClose
         {/* Error Display */}
         {error && (
           <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center">
+                <AlertTriangle className="h-5 w-5 text-red-500 mr-2" />
+                <p className="text-red-600 text-sm">{error}</p>
+              </div>
+              <button
+                onClick={dismissError}
+                className="text-red-500 hover:text-red-700 transition-colors"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Success Message for Cancelled Status */}
+        {request.status === 'cancelled' && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
             <div className="flex items-center">
-              <AlertTriangle className="h-5 w-5 text-red-500 mr-2" />
-              <p className="text-red-600 text-sm">{error}</p>
+              <X className="h-5 w-5 text-red-500 mr-2" />
+              <p className="text-red-600 text-sm font-medium">This request has been cancelled.</p>
             </div>
           </div>
         )}
@@ -318,11 +347,23 @@ export const RequestDetails: React.FC<RequestDetailsProps> = ({ request, onClose
                     Rate & Review
                   </button>
                 )}
+
+                {request.status === 'cancelled' && (
+                  <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                    <p className="text-red-700 text-sm text-center">
+                      This request has been cancelled and cannot be modified.
+                    </p>
+                  </div>
+                )}
+                
+                <button className="w-full border border-gray-300 text-gray-700 py-2.5 px-4 rounded-lg font-medium hover:bg-gray-50 transition-colors text-sm">
+                  Share Request
+                </button>
               </div>
             </div>
 
             {/* Collector Info (if matched) */}
-            {request.collectorId && (
+            {request.collectorId && request.status !== 'cancelled' && (
               <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-6">
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">Your Collector</h3>
                 
