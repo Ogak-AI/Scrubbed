@@ -18,7 +18,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
     email: user?.email || '',
     phone: user?.phone || '',
     address: user?.address || '',
-    userType: user?.userType || 'dumper' as 'dumper' | 'collector',
+    // Remove userType from formData since it shouldn't be editable
   });
 
   // Parse first and last name from full name
@@ -56,7 +56,12 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
     setSuccess(false);
 
     try {
-      await updateProfile(formData);
+      // Only update the fields that are editable (exclude userType)
+      await updateProfile({
+        fullName: formData.fullName,
+        phone: formData.phone,
+        address: formData.address,
+      });
       setSuccess(true);
       
       // Close after showing success message
@@ -74,6 +79,20 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
     setFormData(prev => ({ ...prev, [field]: value }));
     if (error) setError(null);
     if (success) setSuccess(false);
+  };
+
+  // Helper function to get display name for account type
+  const getAccountTypeDisplay = () => {
+    switch (user?.userType) {
+      case 'dumper':
+        return 'Customer Account';
+      case 'collector':
+        return 'Collector Account';
+      case 'admin':
+        return 'Administrator Account';
+      default:
+        return 'Unknown Account Type';
+    }
   };
 
   return (
@@ -219,19 +238,23 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
                     </p>
                   </div>
 
-                  {/* User Type */}
+                  {/* Account Type - Display Only */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       Account Type
                     </label>
-                    <select
-                      value={formData.userType}
-                      onChange={(e) => handleInputChange('userType', e.target.value)}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                    >
-                      <option value="dumper">Customer (Request waste collection)</option>
-                      <option value="collector">Collector (Provide waste collection services)</option>
-                    </select>
+                    <div className="relative">
+                      <User className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                      <input
+                        type="text"
+                        value={getAccountTypeDisplay()}
+                        disabled
+                        className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg bg-gray-50 text-gray-500 cursor-not-allowed"
+                      />
+                    </div>
+                    <p className="mt-1 text-xs text-gray-500">
+                      Account type is determined when you sign up and cannot be changed
+                    </p>
                   </div>
 
                   {/* Phone */}
@@ -295,8 +318,8 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
                       </div>
                       <div>
                         <span className="text-gray-600">Account Type:</span>
-                        <p className="font-medium text-gray-900 capitalize">
-                          {user?.userType === 'dumper' ? 'Customer' : user?.userType}
+                        <p className="font-medium text-gray-900">
+                          {getAccountTypeDisplay()}
                         </p>
                       </div>
                     </div>
