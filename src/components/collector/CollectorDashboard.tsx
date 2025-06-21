@@ -17,12 +17,12 @@ export const CollectorDashboard: React.FC = () => {
   const [currentLocation, setCurrentLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
 
-  // Filter requests for collector view - only show pending requests within 4km
+  // Filter requests for collector view - only show pending requests within 4km from dumpers
   const availableRequests = requests.filter(r => {
     // Only show pending requests that don't have a collector assigned
     if (r.status !== 'pending' || r.collectorId) return false;
     
-    // Don't show requests created by this collector (if they somehow exist)
+    // Don't show requests created by this collector (collectors shouldn't create requests)
     if (r.dumperId === user?.id) return false;
     
     // If we have current location, filter by distance (4km radius)
@@ -156,6 +156,33 @@ export const CollectorDashboard: React.FC = () => {
     setShowProfileSettings(false);
   };
 
+  const refreshLocation = () => {
+    setLocationError(null);
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const location = {
+            lat: position.coords.latitude,
+            lng: position.coords.longitude,
+          };
+          setCurrentLocation(location);
+          
+          if (myCollectorProfile) {
+            updateLocation(location).catch(console.error);
+          }
+        },
+        (error) => {
+          setLocationError('Unable to get your location. Please enable location services.');
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 0 // Force fresh location
+        }
+      );
+    }
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'pending': return 'bg-yellow-100 text-yellow-800';
@@ -186,33 +213,6 @@ export const CollectorDashboard: React.FC = () => {
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
     const distance = R * c; // Distance in kilometers
     return distance;
-  };
-
-  const refreshLocation = () => {
-    setLocationError(null);
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const location = {
-            lat: position.coords.latitude,
-            lng: position.coords.longitude,
-          };
-          setCurrentLocation(location);
-          
-          if (myCollectorProfile) {
-            updateLocation(location).catch(console.error);
-          }
-        },
-        (error) => {
-          setLocationError('Unable to get your location. Please enable location services.');
-        },
-        {
-          enableHighAccuracy: true,
-          timeout: 10000,
-          maximumAge: 0 // Force fresh location
-        }
-      );
-    }
   };
 
   if (collectorsLoading) {
