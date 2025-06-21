@@ -48,68 +48,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     return 'https://scrubbed.online';
   };
 
-  // Parse OAuth callback from URL hash
-  const parseOAuthCallback = () => {
-    const hash = window.location.hash;
-    if (!hash) return null;
-
-    const params = new URLSearchParams(hash.substring(1)); // Remove the # character
-    const accessToken = params.get('access_token');
-    const refreshToken = params.get('refresh_token');
-    const expiresIn = params.get('expires_in');
-    const tokenType = params.get('token_type');
-    const error = params.get('error');
-
-    if (error) {
-      console.error('OAuth error:', error);
-      return { error };
-    }
-
-    if (accessToken && refreshToken) {
-      return {
-        access_token: accessToken,
-        refresh_token: refreshToken,
-        expires_in: expiresIn ? parseInt(expiresIn) : 3600,
-        token_type: tokenType || 'bearer',
-      };
-    }
-
-    return null;
-  };
-
-  // Clear all session data completely
-  const clearAllSessionData = async () => {
-    console.log('Clearing all session data...');
-    
-    // Clear Supabase session
-    await supabase.auth.signOut();
-    
-    // Clear all possible storage locations
-    localStorage.clear();
-    sessionStorage.clear();
-    
-    // Clear specific Supabase keys that might persist
-    const keysToRemove = [
-      'supabase.auth.token',
-      'sb-auth-token',
-      'supabase-auth-token',
-      'supabase.auth.session',
-      'sb-session',
-    ];
-    
-    keysToRemove.forEach(key => {
-      localStorage.removeItem(key);
-      sessionStorage.removeItem(key);
-    });
-    
-    // Clear cookies if any
-    document.cookie.split(";").forEach(function(c) { 
-      document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/"); 
-    });
-    
-    console.log('All session data cleared');
-  };
-
   // Send welcome email function
   const sendWelcomeEmail = async (userEmail: string, userName: string, userType: 'dumper' | 'collector') => {
     try {
@@ -184,70 +122,34 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       try {
         console.log('Initializing auth...');
         
-        // Check if we're handling an OAuth callback from URL hash
-        const oauthData = parseOAuthCallback();
+        // First, check if we have a session from URL hash (OAuth callback)
+        const { data: { session: hashSession }, error: hashError } = await supabase.auth.getSession();
         
-        if (oauthData?.error) {
-          console.error('OAuth error:', oauthData.error);
-          // Clear URL and redirect to home
-          window.history.replaceState({}, document.title, window.location.pathname);
-          setLoading(false);
-          return;
+        if (hashError) {
+          console.error('Error getting session from hash:', hashError);
         }
         
-        if (oauthData && oauthData.access_token && oauthData.refresh_token) {
-          console.log('OAuth callback detected, setting fresh session...');
+        // If we have a session from the hash, use it
+        if (hashSession?.user) {
+          console.log('Found session from OAuth callback:', hashSession.user.id);
           
-          // Clear any existing session first
-          await clearAllSessionData();
-          
-          // Set the session from OAuth callback
-          const { data, error: sessionError } = await supabase.auth.setSession({
-            access_token: oauthData.access_token,
-            refresh_token: oauthData.refresh_token,
-          });
-          
-          if (sessionError) {
-            console.error('Error setting session from OAuth callback:', sessionError);
-            // Clear URL and redirect to home
+          // Clean up the URL hash
+          if (window.location.hash) {
             window.history.replaceState({}, document.title, window.location.pathname);
-            setLoading(false);
-            return;
-          } else {
-            console.log('Fresh session set successfully from OAuth callback');
-            // Clean up URL hash
-            window.history.replaceState({}, document.title, window.location.pathname);
-            
-            // Set session and continue with profile fetch
-            setSession(data.session);
-            if (data.session?.user) {
-              await ensureProfileExists(data.session.user);
-              await fetchUserProfile(data.session.user.id);
-            }
-            return;
           }
-        }
-        
-        // No OAuth callback - check for existing session
-        const { data: { session }, error: getSessionError } = await supabase.auth.getSession();
-
-        if (!mounted) return;
-
-        if (getSessionError) {
-          console.error('Error getting session:', getSessionError);
-          setLoading(false);
+          
+          setSession(hashSession);
+          
+          // Ensure profile exists and fetch user data
+          await ensureProfileExists(hashSession.user);
+          await fetchUserProfile(hashSession.user.id);
           return;
         }
-
-        console.log('Current session:', session?.user?.id);
-        setSession(session);
         
-        if (session?.user) {
-          await fetchUserProfile(session.user.id);
-        } else {
-          console.log('No existing session - user must sign in');
-          setLoading(false);
-        }
+        // No session from hash, check for existing session
+        console.log('No OAuth callback session, checking for existing session...');
+        setLoading(false);
+        
       } catch (error) {
         console.error('Auth initialization error:', error);
         if (mounted) {
@@ -265,6 +167,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       if (!mounted) return;
 
       console.log('Auth state change:', event, session?.user?.id);
+      
+      // Clean up URL hash on any auth state change
+      if (window.location.hash) {
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+      
       setSession(session);
       
       if (session?.user) {
@@ -477,12 +385,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     setLoading(true);
     
     try {
-      // Clear any existing session before signing in
-      await clearAllSessionData();
-      
       const redirectTo = getRedirectUrl();
       
-      console.log('Starting fresh Google sign-in for:', userType, 'redirectTo:', redirectTo);
+      console.log('Starting Google sign-in for:', userType, 'redirectTo:', redirectTo);
       
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
@@ -511,10 +416,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const signOut = async () => {
     try {
-      console.log('Signing out and clearing all session data...');
+      console.log('Signing out...');
       
-      // Clear all session data
-      await clearAllSessionData();
+      // Sign out from Supabase
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
       
       // Reset verification state
       setVerification({
