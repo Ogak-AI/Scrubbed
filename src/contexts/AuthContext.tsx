@@ -122,7 +122,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
     const initializeAuth = async () => {
       try {
-        console.log('Initializing auth...');
+        console.log('Initializing auth without session persistence...');
         
         // Set a shorter timeout to prevent long loading states
         initializationTimeout = setTimeout(() => {
@@ -131,35 +131,20 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             setLoading(false);
             setInitialized(true);
           }
-        }, 3000); // Reduced from 10 seconds to 3 seconds
+        }, 2000); // Reduced to 2 seconds since we're not using persistence
 
-        // Try to get session from localStorage first for faster loading
-        const storedSession = localStorage.getItem('supabase.auth.token');
-        if (storedSession) {
-          console.log('Found stored session, attempting quick restore');
+        // Clear any existing localStorage data that might cause issues
+        if (typeof window !== 'undefined') {
           try {
-            const parsedSession = JSON.parse(storedSession);
-            if (parsedSession && parsedSession.access_token) {
-              // Quick session validation
-              const { data: { user }, error } = await supabase.auth.getUser(parsedSession.access_token);
-              if (user && !error) {
-                console.log('Quick session restore successful');
-                setSession(parsedSession);
-                await fetchUserProfile(user.id);
-                if (mounted) {
-                  setLoading(false);
-                  setInitialized(true);
-                }
-                clearTimeout(initializationTimeout);
-                return;
-              }
-            }
+            localStorage.removeItem('supabase.auth.token');
+            const supabaseKey = 'sb-' + (import.meta.env.VITE_SUPABASE_URL?.split('//')[1]?.split('.')[0] || '') + '-auth-token';
+            localStorage.removeItem(supabaseKey);
           } catch (e) {
-            console.log('Quick session restore failed, falling back to full auth check');
+            console.warn('Failed to clear localStorage:', e);
           }
         }
 
-        // Fallback to full session check
+        // Get the current session (no localStorage fallback since persistence is disabled)
         const { data: { session }, error } = await supabase.auth.getSession();
         
         if (error) {
@@ -319,7 +304,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         .single();
 
       const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Profile fetch timeout')), 5000);
+        setTimeout(() => reject(new Error('Profile fetch timeout')), 3000); // Reduced to 3 seconds
       });
 
       const { data, error } = await Promise.race([profilePromise, timeoutPromise]) as any;
@@ -488,8 +473,16 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     try {
       console.log('Signing out...');
       
-      // Clear localStorage to prevent stale session data
-      localStorage.removeItem('supabase.auth.token');
+      // Clear any localStorage data to prevent stale session issues
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.removeItem('supabase.auth.token');
+          const supabaseKey = 'sb-' + (import.meta.env.VITE_SUPABASE_URL?.split('//')[1]?.split('.')[0] || '') + '-auth-token';
+          localStorage.removeItem(supabaseKey);
+        } catch (e) {
+          console.warn('Failed to clear localStorage:', e);
+        }
+      }
       
       // Sign out from Supabase
       const { error } = await supabase.auth.signOut();

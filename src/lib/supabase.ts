@@ -38,30 +38,17 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
   auth: {
     // Use the current origin for redirects, prioritizing custom domain
     redirectTo: getCurrentOrigin(),
-    // Enable session persistence for better UX
+    // Disable session persistence to prevent stale session issues
     autoRefreshToken: true,
-    persistSession: true,
+    persistSession: false, // DISABLED: This prevents storing sessions in localStorage
     detectSessionInUrl: true,
-    // Optimize token refresh
-    refreshTokenRetryCount: 2, // Reduced from 3
-    // Store session in localStorage for faster access
+    // Reduce token refresh attempts
+    refreshTokenRetryCount: 1,
+    // Use memory-only storage (no persistence)
     storage: {
-      getItem: (key: string) => {
-        if (typeof window !== 'undefined') {
-          return window.localStorage.getItem(key);
-        }
-        return null;
-      },
-      setItem: (key: string, value: string) => {
-        if (typeof window !== 'undefined') {
-          window.localStorage.setItem(key, value);
-        }
-      },
-      removeItem: (key: string) => {
-        if (typeof window !== 'undefined') {
-          window.localStorage.removeItem(key);
-        }
-      },
+      getItem: () => null, // Always return null - no persistence
+      setItem: () => {}, // Do nothing - no persistence
+      removeItem: () => {}, // Do nothing - no persistence
     },
   },
   // Add connection pooling and performance optimizations
@@ -76,58 +63,29 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
   // Reduce real-time connection overhead
   realtime: {
     params: {
-      eventsPerSecond: 3, // Reduced from 5
+      eventsPerSecond: 3,
     },
   },
 });
 
-// Add connection error handling with retry logic
-let retryCount = 0;
-const maxRetries = 3;
-
+// Simplified auth state change handler
 supabase.auth.onAuthStateChange((event, session) => {
+  console.log('Auth state change:', event);
+  
   if (event === 'TOKEN_REFRESHED') {
     console.log('Token refreshed successfully');
-    retryCount = 0; // Reset retry count on success
   } else if (event === 'SIGNED_OUT') {
     console.log('User signed out');
-    retryCount = 0; // Reset retry count
-  } else if (event === 'SIGNED_IN') {
-    console.log('User signed in');
-    retryCount = 0; // Reset retry count
-    
-    // Store session data for faster future access
-    if (session && typeof window !== 'undefined') {
+    // Clear any remaining localStorage data
+    if (typeof window !== 'undefined') {
       try {
-        localStorage.setItem('supabase.auth.token', JSON.stringify(session));
+        localStorage.removeItem('supabase.auth.token');
+        localStorage.removeItem('sb-' + supabaseUrl.split('//')[1].split('.')[0] + '-auth-token');
       } catch (e) {
-        console.warn('Failed to store session in localStorage:', e);
+        console.warn('Failed to clear localStorage:', e);
       }
     }
+  } else if (event === 'SIGNED_IN') {
+    console.log('User signed in successfully');
   }
 });
-
-// Add network error handling
-const originalFetch = window.fetch;
-window.fetch = async (...args) => {
-  try {
-    const response = await originalFetch(...args);
-    if (!response.ok && retryCount < maxRetries) {
-      retryCount++;
-      console.log(`Network request failed, retrying (${retryCount}/${maxRetries})`);
-      // Wait before retry
-      await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
-      return originalFetch(...args);
-    }
-    return response;
-  } catch (error) {
-    if (retryCount < maxRetries) {
-      retryCount++;
-      console.log(`Network error, retrying (${retryCount}/${maxRetries}):`, error);
-      // Wait before retry
-      await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
-      return originalFetch(...args);
-    }
-    throw error;
-  }
-};
