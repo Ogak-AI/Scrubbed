@@ -1,10 +1,52 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Trash2, MapPin, Users, Shield, Clock, Star, Menu, X } from 'lucide-react';
 
 export const LandingPage: React.FC = () => {
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
+
+  // Request location permission when the page loads
+  useEffect(() => {
+    const requestLocationPermission = async () => {
+      if ('geolocation' in navigator) {
+        try {
+          // Request location permission immediately
+          const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(
+              resolve,
+              reject,
+              {
+                enableHighAccuracy: true,
+                timeout: 10000,
+                maximumAge: 300000 // 5 minutes
+              }
+            );
+          });
+          
+          console.log('Location permission granted:', position.coords);
+        } catch (error: any) {
+          console.log('Location permission denied or failed:', error);
+          
+          // Show a user-friendly message about location
+          if (error.code === 1) { // PERMISSION_DENIED
+            console.log('User denied location access');
+          } else if (error.code === 2) { // POSITION_UNAVAILABLE
+            console.log('Location unavailable');
+          } else if (error.code === 3) { // TIMEOUT
+            console.log('Location request timeout');
+          }
+        }
+      } else {
+        console.log('Geolocation not supported');
+      }
+    };
+
+    // Request location permission after a short delay to ensure page is loaded
+    const timer = setTimeout(requestLocationPermission, 1000);
+    
+    return () => clearTimeout(timer);
+  }, []);
 
   const handleDumperSignUp = () => {
     navigate('/auth/dumper');

@@ -225,7 +225,7 @@ export const RequestForm: React.FC<RequestFormProps> = ({ onClose, onSubmit }) =
           reject,
           {
             enableHighAccuracy: true,
-            timeout: 10000,
+            timeout: 15000, // Increased timeout for mobile
             maximumAge: 300000 // 5 minutes
           }
         );
@@ -239,38 +239,51 @@ export const RequestForm: React.FC<RequestFormProps> = ({ onClose, onSubmit }) =
       });
 
       // Get human-readable address
-      const address = await reverseGeocode(latitude, longitude);
-      
-      setFormData(prev => ({
-        ...prev,
-        address: address,
-      }));
+      try {
+        const address = await reverseGeocode(latitude, longitude);
+        
+        setFormData(prev => ({
+          ...prev,
+          address: address,
+        }));
 
-      // Clear any address validation errors
-      setValidationErrors(prev => {
-        const newErrors = { ...prev };
-        delete newErrors.address;
-        return newErrors;
-      });
+        // Clear any address validation errors
+        setValidationErrors(prev => {
+          const newErrors = { ...prev };
+          delete newErrors.address;
+          return newErrors;
+        });
+      } catch (geocodeError) {
+        console.error('Geocoding failed:', geocodeError);
+        // Still set the location even if geocoding fails
+        setFormData(prev => ({
+          ...prev,
+          address: `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`,
+        }));
+      }
 
     } catch (error: any) {
       console.error('Error getting location:', error);
       
       let errorMessage = 'Unable to get your location. ';
       
-      switch (error.code) {
-        case error.PERMISSION_DENIED:
-          errorMessage += 'Please allow location access and try again.';
-          break;
-        case error.POSITION_UNAVAILABLE:
-          errorMessage += 'Location information is unavailable.';
-          break;
-        case error.TIMEOUT:
-          errorMessage += 'Location request timed out. Please try again.';
-          break;
-        default:
-          errorMessage += 'Please enter your address manually.';
-          break;
+      if (error.code) {
+        switch (error.code) {
+          case error.PERMISSION_DENIED:
+            errorMessage += 'Please allow location access in your browser settings and try again.';
+            break;
+          case error.POSITION_UNAVAILABLE:
+            errorMessage += 'Location information is unavailable. Please check your device settings.';
+            break;
+          case error.TIMEOUT:
+            errorMessage += 'Location request timed out. Please try again.';
+            break;
+          default:
+            errorMessage += 'Please enter your address manually.';
+            break;
+        }
+      } else {
+        errorMessage += 'Please enter your address manually.';
       }
       
       setError(errorMessage);
@@ -576,7 +589,7 @@ export const RequestForm: React.FC<RequestFormProps> = ({ onClose, onSubmit }) =
         </div>
 
         {/* Info Card */}
-        <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4 sm:p-6">
           <h4 className="font-medium text-blue-800 mb-2 text-sm sm:text-base">What happens next?</h4>
           <ol className="text-blue-700 text-xs sm:text-sm space-y-1">
             <li>1. Your request will be posted to nearby collectors</li>
