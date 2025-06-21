@@ -122,33 +122,33 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       try {
         console.log('Initializing auth...');
         
-        // First, check if we have a session from URL hash (OAuth callback)
-        const { data: { session: hashSession }, error: hashError } = await supabase.auth.getSession();
+        // Get the current session (this handles OAuth callbacks automatically)
+        const { data: { session }, error } = await supabase.auth.getSession();
         
-        if (hashError) {
-          console.error('Error getting session from hash:', hashError);
-        }
-        
-        // If we have a session from the hash, use it
-        if (hashSession?.user) {
-          console.log('Found session from OAuth callback:', hashSession.user.id);
-          
-          // Clean up the URL hash
-          if (window.location.hash) {
-            window.history.replaceState({}, document.title, window.location.pathname);
-          }
-          
-          setSession(hashSession);
-          
-          // Ensure profile exists and fetch user data
-          await ensureProfileExists(hashSession.user);
-          await fetchUserProfile(hashSession.user.id);
+        if (error) {
+          console.error('Error getting session:', error);
+          setLoading(false);
           return;
         }
+
+        if (!mounted) return;
+
+        // Clean up OAuth hash from URL if present
+        if (window.location.hash && window.location.hash.includes('access_token')) {
+          console.log('Cleaning up OAuth hash from URL');
+          window.history.replaceState({}, document.title, window.location.pathname);
+        }
+
+        setSession(session);
         
-        // No session from hash, check for existing session
-        console.log('No OAuth callback session, checking for existing session...');
-        setLoading(false);
+        if (session?.user) {
+          console.log('Found authenticated user:', session.user.id);
+          await ensureProfileExists(session.user);
+          await fetchUserProfile(session.user.id);
+        } else {
+          console.log('No authenticated user found');
+          setLoading(false);
+        }
         
       } catch (error) {
         console.error('Auth initialization error:', error);
@@ -169,7 +169,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       console.log('Auth state change:', event, session?.user?.id);
       
       // Clean up URL hash on any auth state change
-      if (window.location.hash) {
+      if (window.location.hash && window.location.hash.includes('access_token')) {
+        console.log('Cleaning up OAuth hash after auth state change');
         window.history.replaceState({}, document.title, window.location.pathname);
       }
       
@@ -178,6 +179,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       if (session?.user) {
         // Create profile if it doesn't exist (for new Google users)
         if (event === 'SIGNED_IN') {
+          console.log('User signed in, ensuring profile exists');
           await ensureProfileExists(session.user);
           
           // Send welcome email for new sign-ins
@@ -405,8 +407,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
       if (error) {
         console.error('Google sign-in error:', error);
+        setLoading(false);
         throw error;
       }
+      
+      // Don't set loading to false here - let the auth state change handle it
     } catch (error: any) {
       console.error('Error signing in with Google:', error);
       setLoading(false);
