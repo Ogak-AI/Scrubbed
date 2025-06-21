@@ -37,6 +37,10 @@ const AppContent: React.FC = () => {
     );
   }
 
+  // Debug logging for user type detection
+  console.log('Current user:', user);
+  console.log('User type:', user.userType);
+
   // Check if user needs phone verification (only if they have a phone number)
   const needsVerification = user.phone && !verification.phoneVerified;
   
@@ -46,14 +50,20 @@ const AppContent: React.FC = () => {
 
   // Get the appropriate dashboard component based on user type
   const getDashboardComponent = () => {
+    console.log('Getting dashboard for user type:', user.userType);
+    
     switch (user.userType) {
       case 'dumper':
+        console.log('Rendering DumperDashboard');
         return <DumperDashboard />;
       case 'collector':
+        console.log('Rendering CollectorDashboard');
         return <CollectorDashboard />;
       case 'admin':
+        console.log('Rendering AdminDashboard');
         return <AdminDashboard />;
       default:
+        console.log('Unknown user type, defaulting to DumperDashboard');
         return <DumperDashboard />; // Default fallback
     }
   };

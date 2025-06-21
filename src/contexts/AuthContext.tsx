@@ -49,6 +49,58 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     return 'https://scrubbed.online';
   };
 
+  // Extract user type from URL parameters after OAuth redirect
+  const extractUserTypeFromUrl = (): string | null => {
+    if (typeof window === 'undefined') return null;
+    
+    try {
+      // Check URL hash for access_token and state
+      const hash = window.location.hash;
+      if (hash.includes('access_token') && hash.includes('state=')) {
+        const stateMatch = hash.match(/state=([^&]+)/);
+        if (stateMatch) {
+          const decodedState = decodeURIComponent(stateMatch[1]);
+          const stateData = JSON.parse(atob(decodedState));
+          console.log('Extracted OAuth state data:', stateData);
+          return stateData.user_type || null;
+        }
+      }
+      
+      // Check URL search params as fallback
+      const urlParams = new URLSearchParams(window.location.search);
+      const state = urlParams.get('state');
+      if (state) {
+        const stateData = JSON.parse(atob(state));
+        console.log('Extracted state data from search params:', stateData);
+        return stateData.user_type || null;
+      }
+    } catch (error) {
+      console.warn('Failed to extract user type from URL:', error);
+    }
+    
+    return null;
+  };
+
+  // Store user type in localStorage temporarily during OAuth flow
+  const storeUserTypeForOAuth = (userType: string) => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('pending_user_type', userType);
+      console.log('Stored pending user type:', userType);
+    }
+  };
+
+  const getPendingUserType = (): string | null => {
+    if (typeof window !== 'undefined') {
+      const pendingType = localStorage.getItem('pending_user_type');
+      if (pendingType) {
+        localStorage.removeItem('pending_user_type'); // Clean up after use
+        console.log('Retrieved pending user type:', pendingType);
+        return pendingType;
+      }
+    }
+    return null;
+  };
+
   // Send welcome email function
   const sendWelcomeEmail = async (userEmail: string, userName: string, userType: 'dumper' | 'collector') => {
     try {
@@ -228,7 +280,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           try {
             await ensureProfileExists(session.user);
             
-            // Send welcome email for new sign-ins
+            // Get user type and send welcome email for new sign-ins
             const userType = session.user.user_metadata?.user_type || 'dumper';
             const userName = getDisplayName(session.user);
             
@@ -366,14 +418,38 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   };
 
   const createBasicUser = (userId: string): User => {
-    // Get user type from session metadata if available
-    const userType = session?.user?.user_metadata?.user_type || 'dumper';
+    // CRITICAL FIX: Get user type from multiple sources
+    let userType: 'dumper' | 'collector' = 'dumper'; // Default fallback
+    
+    // 1. Check session user metadata
+    if (session?.user?.user_metadata?.user_type) {
+      userType = session.user.user_metadata.user_type;
+      console.log('User type from session metadata:', userType);
+    }
+    // 2. Check for pending user type from OAuth flow
+    else {
+      const pendingType = getPendingUserType();
+      if (pendingType === 'collector' || pendingType === 'dumper') {
+        userType = pendingType as 'dumper' | 'collector';
+        console.log('User type from pending OAuth:', userType);
+      }
+      // 3. Try to extract from URL
+      else {
+        const urlType = extractUserTypeFromUrl();
+        if (urlType === 'collector' || urlType === 'dumper') {
+          userType = urlType as 'dumper' | 'collector';
+          console.log('User type from URL:', userType);
+        }
+      }
+    }
+    
+    console.log('Final determined user type:', userType);
     
     return {
       id: userId,
       email: session?.user?.email || '',
       fullName: getDisplayName(session?.user!) || null,
-      userType: userType as 'dumper' | 'collector',
+      userType: userType,
       phone: null,
       address: null,
       emailVerified: true,
@@ -399,17 +475,37 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       if (checkError && checkError.code === 'PGRST116') {
         console.log('Creating new profile');
         
-        // CRITICAL FIX: Get user type from metadata, with proper fallback
-        let userType = 'dumper'; // Default fallback
+        // CRITICAL FIX: Get user type from multiple sources with proper priority
+        let userType: 'dumper' | 'collector' = 'dumper'; // Default fallback
         
-        // Check multiple possible locations for user_type
+        // Priority 1: Check user metadata
         if (supabaseUser.user_metadata?.user_type) {
           userType = supabaseUser.user_metadata.user_type;
-        } else if (supabaseUser.app_metadata?.user_type) {
+          console.log('User type from metadata:', userType);
+        }
+        // Priority 2: Check app metadata
+        else if (supabaseUser.app_metadata?.user_type) {
           userType = supabaseUser.app_metadata.user_type;
+          console.log('User type from app metadata:', userType);
+        }
+        // Priority 3: Check pending OAuth type
+        else {
+          const pendingType = getPendingUserType();
+          if (pendingType === 'collector' || pendingType === 'dumper') {
+            userType = pendingType as 'dumper' | 'collector';
+            console.log('User type from pending OAuth:', userType);
+          }
+          // Priority 4: Extract from URL
+          else {
+            const urlType = extractUserTypeFromUrl();
+            if (urlType === 'collector' || urlType === 'dumper') {
+              userType = urlType as 'dumper' | 'collector';
+              console.log('User type from URL:', userType);
+            }
+          }
         }
         
-        console.log('Determined user type:', userType);
+        console.log('Final determined user type for profile creation:', userType);
         
         const profileData = {
           id: supabaseUser.id,
@@ -456,7 +552,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       
       console.log('Starting Google sign-in for:', userType, 'redirectTo:', redirectTo);
       
-      // CRITICAL FIX: Store user type in URL state parameter
+      // Store user type for OAuth flow
+      storeUserTypeForOAuth(userType);
+      
+      // CRITICAL FIX: Use state parameter to pass user type through OAuth
       const stateData = {
         user_type: userType,
         timestamp: Date.now()
@@ -470,7 +569,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             access_type: 'offline',
             prompt: 'consent',
           },
-          // Pass user type in the state parameter
+          // Pass user type in the state parameter for OAuth
           state: btoa(JSON.stringify(stateData)),
         },
       });
@@ -497,6 +596,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       if (typeof window !== 'undefined') {
         try {
           localStorage.removeItem('supabase.auth.token');
+          localStorage.removeItem('pending_user_type'); // Clean up OAuth state
           const supabaseKey = 'sb-' + (import.meta.env.VITE_SUPABASE_URL?.split('//')[1]?.split('.')[0] || '') + '-auth-token';
           localStorage.removeItem(supabaseKey);
         } catch (e) {

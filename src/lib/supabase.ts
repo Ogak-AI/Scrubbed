@@ -68,43 +68,12 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
   },
 });
 
-// Function to extract user type from OAuth state
-const extractUserTypeFromUrl = (): string | null => {
-  if (typeof window === 'undefined') return null;
-  
-  try {
-    // Check URL hash for state parameter
-    const hash = window.location.hash;
-    if (hash.includes('state=')) {
-      const stateMatch = hash.match(/state=([^&]+)/);
-      if (stateMatch) {
-        const stateData = JSON.parse(atob(decodeURIComponent(stateMatch[1])));
-        console.log('Extracted state data:', stateData);
-        return stateData.user_type || null;
-      }
-    }
-    
-    // Check URL search params as fallback
-    const urlParams = new URLSearchParams(window.location.search);
-    const state = urlParams.get('state');
-    if (state) {
-      const stateData = JSON.parse(atob(state));
-      console.log('Extracted state data from search:', stateData);
-      return stateData.user_type || null;
-    }
-  } catch (error) {
-    console.warn('Failed to extract user type from URL state:', error);
-  }
-  
-  return null;
-};
-
-// Enhanced auth state change handler
+// Enhanced auth state change handler with OAuth state processing
 supabase.auth.onAuthStateChange((event, session) => {
   console.log('Auth state change:', event);
   
   if (event === 'SIGNED_IN' && session?.user) {
-    // Extract user type from OAuth state and store in user metadata
+    // Extract user type from OAuth state and update user metadata
     const userTypeFromUrl = extractUserTypeFromUrl();
     
     if (userTypeFromUrl) {
@@ -128,6 +97,7 @@ supabase.auth.onAuthStateChange((event, session) => {
     if (typeof window !== 'undefined') {
       try {
         localStorage.removeItem('supabase.auth.token');
+        localStorage.removeItem('pending_user_type');
         localStorage.removeItem('sb-' + supabaseUrl.split('//')[1].split('.')[0] + '-auth-token');
       } catch (e) {
         console.warn('Failed to clear localStorage:', e);
@@ -137,3 +107,35 @@ supabase.auth.onAuthStateChange((event, session) => {
     console.log('User signed in successfully');
   }
 });
+
+// Function to extract user type from OAuth state
+const extractUserTypeFromUrl = (): string | null => {
+  if (typeof window === 'undefined') return null;
+  
+  try {
+    // Check URL hash for state parameter
+    const hash = window.location.hash;
+    if (hash.includes('state=')) {
+      const stateMatch = hash.match(/state=([^&]+)/);
+      if (stateMatch) {
+        const decodedState = decodeURIComponent(stateMatch[1]);
+        const stateData = JSON.parse(atob(decodedState));
+        console.log('Extracted state data:', stateData);
+        return stateData.user_type || null;
+      }
+    }
+    
+    // Check URL search params as fallback
+    const urlParams = new URLSearchParams(window.location.search);
+    const state = urlParams.get('state');
+    if (state) {
+      const stateData = JSON.parse(atob(state));
+      console.log('Extracted state data from search:', stateData);
+      return stateData.user_type || null;
+    }
+  } catch (error) {
+    console.warn('Failed to extract user type from URL state:', error);
+  }
+  
+  return null;
+};
