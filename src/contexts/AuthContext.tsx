@@ -366,11 +366,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   };
 
   const createBasicUser = (userId: string): User => {
+    // Get user type from session metadata if available
+    const userType = session?.user?.user_metadata?.user_type || 'dumper';
+    
     return {
       id: userId,
       email: session?.user?.email || '',
       fullName: getDisplayName(session?.user!) || null,
-      userType: 'dumper' as const,
+      userType: userType as 'dumper' | 'collector',
       phone: null,
       address: null,
       emailVerified: true,
@@ -385,6 +388,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
     try {
       console.log('Ensuring profile exists for:', supabaseUser.id);
+      console.log('User metadata:', supabaseUser.user_metadata);
       
       const { data: existingProfile, error: checkError } = await supabase
         .from('profiles')
@@ -394,7 +398,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
       if (checkError && checkError.code === 'PGRST116') {
         console.log('Creating new profile');
-        const userType = supabaseUser.user_metadata?.user_type || 'dumper';
+        
+        // CRITICAL FIX: Get user type from metadata, with proper fallback
+        let userType = 'dumper'; // Default fallback
+        
+        // Check multiple possible locations for user_type
+        if (supabaseUser.user_metadata?.user_type) {
+          userType = supabaseUser.user_metadata.user_type;
+        } else if (supabaseUser.app_metadata?.user_type) {
+          userType = supabaseUser.app_metadata.user_type;
+        }
+        
+        console.log('Determined user type:', userType);
         
         const profileData = {
           id: supabaseUser.id,
@@ -441,6 +456,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       
       console.log('Starting Google sign-in for:', userType, 'redirectTo:', redirectTo);
       
+      // CRITICAL FIX: Store user type in URL state parameter
+      const stateData = {
+        user_type: userType,
+        timestamp: Date.now()
+      };
+      
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
@@ -449,9 +470,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             access_type: 'offline',
             prompt: 'consent',
           },
-          data: {
-            user_type: userType,
-          },
+          // Pass user type in the state parameter
+          state: btoa(JSON.stringify(stateData)),
         },
       });
 

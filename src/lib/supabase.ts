@@ -68,9 +68,57 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
   },
 });
 
-// Simplified auth state change handler
+// Function to extract user type from OAuth state
+const extractUserTypeFromUrl = (): string | null => {
+  if (typeof window === 'undefined') return null;
+  
+  try {
+    // Check URL hash for state parameter
+    const hash = window.location.hash;
+    if (hash.includes('state=')) {
+      const stateMatch = hash.match(/state=([^&]+)/);
+      if (stateMatch) {
+        const stateData = JSON.parse(atob(decodeURIComponent(stateMatch[1])));
+        console.log('Extracted state data:', stateData);
+        return stateData.user_type || null;
+      }
+    }
+    
+    // Check URL search params as fallback
+    const urlParams = new URLSearchParams(window.location.search);
+    const state = urlParams.get('state');
+    if (state) {
+      const stateData = JSON.parse(atob(state));
+      console.log('Extracted state data from search:', stateData);
+      return stateData.user_type || null;
+    }
+  } catch (error) {
+    console.warn('Failed to extract user type from URL state:', error);
+  }
+  
+  return null;
+};
+
+// Enhanced auth state change handler
 supabase.auth.onAuthStateChange((event, session) => {
   console.log('Auth state change:', event);
+  
+  if (event === 'SIGNED_IN' && session?.user) {
+    // Extract user type from OAuth state and store in user metadata
+    const userTypeFromUrl = extractUserTypeFromUrl();
+    
+    if (userTypeFromUrl) {
+      console.log('Setting user type from OAuth state:', userTypeFromUrl);
+      
+      // Update the user metadata with the correct user type
+      session.user.user_metadata = {
+        ...session.user.user_metadata,
+        user_type: userTypeFromUrl
+      };
+      
+      console.log('Updated user metadata:', session.user.user_metadata);
+    }
+  }
   
   if (event === 'TOKEN_REFRESHED') {
     console.log('Token refreshed successfully');
