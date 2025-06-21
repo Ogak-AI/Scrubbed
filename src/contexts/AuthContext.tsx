@@ -118,22 +118,48 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   useEffect(() => {
     let mounted = true;
-    let timeoutId: NodeJS.Timeout;
+    let initializationTimeout: NodeJS.Timeout;
 
     const initializeAuth = async () => {
       try {
         console.log('Initializing auth...');
         
-        // Set a timeout to prevent infinite loading
-        timeoutId = setTimeout(() => {
+        // Set a shorter timeout to prevent long loading states
+        initializationTimeout = setTimeout(() => {
           if (mounted && !initialized) {
             console.log('Auth initialization timeout, setting loading to false');
             setLoading(false);
             setInitialized(true);
           }
-        }, 10000); // 10 second timeout
+        }, 3000); // Reduced from 10 seconds to 3 seconds
 
-        // Get the current session (this handles OAuth callbacks automatically)
+        // Try to get session from localStorage first for faster loading
+        const storedSession = localStorage.getItem('supabase.auth.token');
+        if (storedSession) {
+          console.log('Found stored session, attempting quick restore');
+          try {
+            const parsedSession = JSON.parse(storedSession);
+            if (parsedSession && parsedSession.access_token) {
+              // Quick session validation
+              const { data: { user }, error } = await supabase.auth.getUser(parsedSession.access_token);
+              if (user && !error) {
+                console.log('Quick session restore successful');
+                setSession(parsedSession);
+                await fetchUserProfile(user.id);
+                if (mounted) {
+                  setLoading(false);
+                  setInitialized(true);
+                }
+                clearTimeout(initializationTimeout);
+                return;
+              }
+            }
+          } catch (e) {
+            console.log('Quick session restore failed, falling back to full auth check');
+          }
+        }
+
+        // Fallback to full session check
         const { data: { session }, error } = await supabase.auth.getSession();
         
         if (error) {
@@ -181,15 +207,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           setInitialized(true);
         }
       } finally {
-        if (timeoutId) {
-          clearTimeout(timeoutId);
+        if (initializationTimeout) {
+          clearTimeout(initializationTimeout);
         }
       }
     };
 
     initializeAuth();
 
-    // Listen for auth changes
+    // Listen for auth changes with optimized handling
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
@@ -198,8 +224,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       console.log('Auth state change:', event, session?.user?.id);
       
       // Clear any existing timeout
-      if (timeoutId) {
-        clearTimeout(timeoutId);
+      if (initializationTimeout) {
+        clearTimeout(initializationTimeout);
       }
       
       // Clean up URL hash on any auth state change
@@ -245,8 +271,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
     return () => {
       mounted = false;
-      if (timeoutId) {
-        clearTimeout(timeoutId);
+      if (initializationTimeout) {
+        clearTimeout(initializationTimeout);
       }
       subscription.unsubscribe();
     };
@@ -285,11 +311,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     try {
       console.log('Fetching profile for user:', userId);
       
-      const { data, error } = await supabase
+      // Use a shorter timeout for profile fetching
+      const profilePromise = supabase
         .from('profiles')
         .select('*')
         .eq('id', userId)
         .single();
+
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Profile fetch timeout')), 5000);
+      });
+
+      const { data, error } = await Promise.race([profilePromise, timeoutPromise]) as any;
 
       if (error && error.code !== 'PGRST116') {
         console.error('Error fetching user profile:', error);
@@ -454,6 +487,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const signOut = async () => {
     try {
       console.log('Signing out...');
+      
+      // Clear localStorage to prevent stale session data
+      localStorage.removeItem('supabase.auth.token');
       
       // Sign out from Supabase
       const { error } = await supabase.auth.signOut();

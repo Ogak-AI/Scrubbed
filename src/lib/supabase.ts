@@ -42,8 +42,27 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: true,
-    // Reduce token refresh frequency to improve performance
-    refreshTokenRetryCount: 3,
+    // Optimize token refresh
+    refreshTokenRetryCount: 2, // Reduced from 3
+    // Store session in localStorage for faster access
+    storage: {
+      getItem: (key: string) => {
+        if (typeof window !== 'undefined') {
+          return window.localStorage.getItem(key);
+        }
+        return null;
+      },
+      setItem: (key: string, value: string) => {
+        if (typeof window !== 'undefined') {
+          window.localStorage.setItem(key, value);
+        }
+      },
+      removeItem: (key: string) => {
+        if (typeof window !== 'undefined') {
+          window.localStorage.removeItem(key);
+        }
+      },
+    },
   },
   // Add connection pooling and performance optimizations
   db: {
@@ -57,16 +76,58 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
   // Reduce real-time connection overhead
   realtime: {
     params: {
-      eventsPerSecond: 5, // Reduced from 10
+      eventsPerSecond: 3, // Reduced from 5
     },
   },
 });
 
-// Add connection error handling
+// Add connection error handling with retry logic
+let retryCount = 0;
+const maxRetries = 3;
+
 supabase.auth.onAuthStateChange((event, session) => {
   if (event === 'TOKEN_REFRESHED') {
     console.log('Token refreshed successfully');
+    retryCount = 0; // Reset retry count on success
   } else if (event === 'SIGNED_OUT') {
     console.log('User signed out');
+    retryCount = 0; // Reset retry count
+  } else if (event === 'SIGNED_IN') {
+    console.log('User signed in');
+    retryCount = 0; // Reset retry count
+    
+    // Store session data for faster future access
+    if (session && typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('supabase.auth.token', JSON.stringify(session));
+      } catch (e) {
+        console.warn('Failed to store session in localStorage:', e);
+      }
+    }
   }
 });
+
+// Add network error handling
+const originalFetch = window.fetch;
+window.fetch = async (...args) => {
+  try {
+    const response = await originalFetch(...args);
+    if (!response.ok && retryCount < maxRetries) {
+      retryCount++;
+      console.log(`Network request failed, retrying (${retryCount}/${maxRetries})`);
+      // Wait before retry
+      await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
+      return originalFetch(...args);
+    }
+    return response;
+  } catch (error) {
+    if (retryCount < maxRetries) {
+      retryCount++;
+      console.log(`Network error, retrying (${retryCount}/${maxRetries}):`, error);
+      // Wait before retry
+      await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
+      return originalFetch(...args);
+    }
+    throw error;
+  }
+};

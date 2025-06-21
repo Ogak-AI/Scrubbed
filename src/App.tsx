@@ -19,6 +19,16 @@ const AppContent: React.FC = () => {
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mx-auto mb-4"></div>
           <p className="text-gray-600">Loading your account...</p>
           <p className="text-sm text-gray-500 mt-2">This should only take a moment</p>
+          
+          {/* Add a fallback after 5 seconds */}
+          <div className="mt-4">
+            <button 
+              onClick={() => window.location.reload()}
+              className="text-green-600 hover:text-green-700 text-sm underline"
+            >
+              Taking too long? Click to refresh
+            </button>
+          </div>
         </div>
       </div>
     );
