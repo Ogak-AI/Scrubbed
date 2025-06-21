@@ -258,6 +258,19 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
       if (error && error.code !== 'PGRST116') {
         console.error('Error fetching user profile:', error);
+        // Create a basic user object to prevent infinite loading
+        setUser({
+          id: userId,
+          email: session?.user?.email || '',
+          fullName: getDisplayName(session?.user!) || null,
+          userType: 'dumper',
+          phone: null,
+          address: null,
+          emailVerified: true,
+          phoneVerified: false,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        });
         setLoading(false);
         return;
       }

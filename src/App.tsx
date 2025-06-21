@@ -18,7 +18,7 @@ const AppContent: React.FC = () => {
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mx-auto mb-4"></div>
           <p className="text-gray-600">Loading your account...</p>
-          <p className="text-sm text-gray-500 mt-2">This should only take a moment</p>
+          <p className="text-sm text-gray-500 mt-2">Please wait while we set up your dashboard</p>
         </div>
       </div>
     );

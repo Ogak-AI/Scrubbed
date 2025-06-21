@@ -79,14 +79,6 @@ export const useWasteRequests = () => {
 
       console.log('Fetching requests for user:', user.id, 'type:', user.userType);
 
-      // Check if Supabase is properly configured
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-      
-      if (!supabaseUrl || !supabaseKey || supabaseUrl.includes('placeholder')) {
-        throw new Error('Supabase is not configured. Please set up your .env file with VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY');
-      }
-
       // Ensure user profile exists before fetching requests
       await ensureUserProfileExists();
 
@@ -103,16 +95,7 @@ export const useWasteRequests = () => {
         query = query.or(`collector_id.eq.${user.id},status.eq.pending`);
       }
 
-      // Add timeout to prevent hanging
-      const requestPromise = query;
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Database request timeout - please check your internet connection')), 10000)
-      );
-
-      const { data, error: fetchError } = await Promise.race([
-        requestPromise,
-        timeoutPromise
-      ]) as any;
+      const { data, error: fetchError } = await query;
 
       if (fetchError) {
         console.error('Supabase error:', fetchError);
@@ -165,14 +148,6 @@ export const useWasteRequests = () => {
     try {
       console.log('Creating request with data:', requestData);
       console.log('Current user:', user);
-
-      // Check if Supabase is properly configured
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-      
-      if (!supabaseUrl || !supabaseKey || supabaseUrl.includes('placeholder')) {
-        throw new Error('Supabase is not configured. Please set up your .env file with VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY');
-      }
 
       // CRITICAL: Ensure user profile exists before creating request
       console.log('Ensuring profile exists before creating request...');
@@ -346,15 +321,6 @@ export const useWasteRequests = () => {
   // Set up real-time subscription with error handling
   useEffect(() => {
     if (!user) return;
-
-    // Check if Supabase is properly configured before setting up subscription
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-    const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-    
-    if (!supabaseUrl || !supabaseKey || supabaseUrl.includes('placeholder')) {
-      console.log('Skipping real-time subscription - Supabase not configured');
-      return;
-    }
 
     let retryCount = 0;
     const maxRetries = 3;
