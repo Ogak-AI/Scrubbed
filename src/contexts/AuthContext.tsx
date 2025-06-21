@@ -48,6 +48,35 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     return 'https://scrubbed.online';
   };
 
+  // Parse OAuth callback from URL hash
+  const parseOAuthCallback = () => {
+    const hash = window.location.hash;
+    if (!hash) return null;
+
+    const params = new URLSearchParams(hash.substring(1)); // Remove the # character
+    const accessToken = params.get('access_token');
+    const refreshToken = params.get('refresh_token');
+    const expiresIn = params.get('expires_in');
+    const tokenType = params.get('token_type');
+    const error = params.get('error');
+
+    if (error) {
+      console.error('OAuth error:', error);
+      return { error };
+    }
+
+    if (accessToken && refreshToken) {
+      return {
+        access_token: accessToken,
+        refresh_token: refreshToken,
+        expires_in: expiresIn ? parseInt(expiresIn) : 3600,
+        token_type: tokenType || 'bearer',
+      };
+    }
+
+    return null;
+  };
+
   // Clear all session data completely
   const clearAllSessionData = async () => {
     console.log('Clearing all session data...');
@@ -155,41 +184,38 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       try {
         console.log('Initializing auth...');
         
-        // Check if we're handling an OAuth callback
-        const urlParams = new URLSearchParams(window.location.search);
-        const accessToken = urlParams.get('access_token');
-        const refreshToken = urlParams.get('refresh_token');
-        const error = urlParams.get('error');
+        // Check if we're handling an OAuth callback from URL hash
+        const oauthData = parseOAuthCallback();
         
-        if (error) {
-          console.error('OAuth error:', error);
-          // Clear URL parameters and redirect to home
+        if (oauthData?.error) {
+          console.error('OAuth error:', oauthData.error);
+          // Clear URL and redirect to home
           window.history.replaceState({}, document.title, window.location.pathname);
           setLoading(false);
           return;
         }
         
-        if (accessToken && refreshToken) {
+        if (oauthData && oauthData.access_token && oauthData.refresh_token) {
           console.log('OAuth callback detected, setting fresh session...');
           
           // Clear any existing session first
           await clearAllSessionData();
           
-          // Set the session from URL parameters
+          // Set the session from OAuth callback
           const { data, error: sessionError } = await supabase.auth.setSession({
-            access_token: accessToken,
-            refresh_token: refreshToken,
+            access_token: oauthData.access_token,
+            refresh_token: oauthData.refresh_token,
           });
           
           if (sessionError) {
             console.error('Error setting session from OAuth callback:', sessionError);
-            // Clear URL parameters and redirect to home
+            // Clear URL and redirect to home
             window.history.replaceState({}, document.title, window.location.pathname);
             setLoading(false);
             return;
           } else {
             console.log('Fresh session set successfully from OAuth callback');
-            // Clean up URL parameters
+            // Clean up URL hash
             window.history.replaceState({}, document.title, window.location.pathname);
             
             // Set session and continue with profile fetch
