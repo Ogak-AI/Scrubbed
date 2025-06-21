@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { MapPin, Clock, Trash2, User, Settings, LogOut, Bell, DollarSign, Star, Navigation, AlertCircle, Menu, X } from 'lucide-react';
+import { MapPin, Clock, Trash2, User, Settings, LogOut, Bell, Star, Navigation, AlertCircle, RefreshCw, Menu, X } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useCollectors } from '../../hooks/useCollectors';
 import { useWasteRequests } from '../../hooks/useWasteRequests';
@@ -15,12 +15,17 @@ export const CollectorDashboard: React.FC = () => {
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showProfileSettings, setShowProfileSettings] = useState(false);
   const [currentLocation, setCurrentLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [locationError, setLocationError] = useState<string | null>(null);
 
   // Filter requests for collector view - only show pending requests within 4km
   const availableRequests = requests.filter(r => {
+    // Only show pending requests that don't have a collector assigned
     if (r.status !== 'pending' || r.collectorId) return false;
     
-    // If we have current location, filter by distance
+    // Don't show requests created by this collector (if they somehow exist)
+    if (r.dumperId === user?.id) return false;
+    
+    // If we have current location, filter by distance (4km radius)
     if (currentLocation && r.location) {
       const distance = calculateDistance(
         currentLocation.lat,
@@ -31,9 +36,11 @@ export const CollectorDashboard: React.FC = () => {
       return distance <= 4; // 4km radius
     }
     
-    return true; // Show all if no location available
+    // If no location available, don't show any requests (location is required for collectors)
+    return false;
   });
 
+  // Filter for collector's accepted jobs only
   const myJobs = requests.filter(r => r.collectorId === user?.id);
 
   useEffect(() => {
@@ -42,9 +49,14 @@ export const CollectorDashboard: React.FC = () => {
     }
   }, [myCollectorProfile]);
 
-  // Get current location on component mount
+  // Get current location on component mount and update periodically
   useEffect(() => {
-    if (navigator.geolocation) {
+    const getCurrentLocation = () => {
+      if (!navigator.geolocation) {
+        setLocationError('Geolocation is not supported by this browser.');
+        return;
+      }
+
       navigator.geolocation.getCurrentPosition(
         (position) => {
           const location = {
@@ -52,6 +64,7 @@ export const CollectorDashboard: React.FC = () => {
             lng: position.coords.longitude,
           };
           setCurrentLocation(location);
+          setLocationError(null);
           
           // Update location in database if collector profile exists
           if (myCollectorProfile) {
@@ -60,6 +73,24 @@ export const CollectorDashboard: React.FC = () => {
         },
         (error) => {
           console.error('Error getting location:', error);
+          let errorMessage = 'Unable to get your location. ';
+          
+          switch (error.code) {
+            case error.PERMISSION_DENIED:
+              errorMessage += 'Please allow location access to see nearby requests.';
+              break;
+            case error.POSITION_UNAVAILABLE:
+              errorMessage += 'Location information is unavailable.';
+              break;
+            case error.TIMEOUT:
+              errorMessage += 'Location request timed out.';
+              break;
+            default:
+              errorMessage += 'Please enable location services.';
+              break;
+          }
+          
+          setLocationError(errorMessage);
         },
         {
           enableHighAccuracy: true,
@@ -67,8 +98,20 @@ export const CollectorDashboard: React.FC = () => {
           maximumAge: 300000 // 5 minutes
         }
       );
-    }
-  }, [myCollectorProfile, updateLocation]);
+    };
+
+    // Get location immediately
+    getCurrentLocation();
+
+    // Update location every 5 minutes if available
+    const locationInterval = setInterval(() => {
+      if (isAvailable && myCollectorProfile) {
+        getCurrentLocation();
+      }
+    }, 5 * 60 * 1000); // 5 minutes
+
+    return () => clearInterval(locationInterval);
+  }, [myCollectorProfile, updateLocation, isAvailable]);
 
   const handleCompleteOnboarding = async (profileData: any) => {
     try {
@@ -143,6 +186,33 @@ export const CollectorDashboard: React.FC = () => {
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
     const distance = R * c; // Distance in kilometers
     return distance;
+  };
+
+  const refreshLocation = () => {
+    setLocationError(null);
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const location = {
+            lat: position.coords.latitude,
+            lng: position.coords.longitude,
+          };
+          setCurrentLocation(location);
+          
+          if (myCollectorProfile) {
+            updateLocation(location).catch(console.error);
+          }
+        },
+        (error) => {
+          setLocationError('Unable to get your location. Please enable location services.');
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 0 // Force fresh location
+        }
+      );
+    }
   };
 
   if (collectorsLoading) {
@@ -333,13 +403,48 @@ export const CollectorDashboard: React.FC = () => {
         )}
 
         {/* Location Status */}
-        {currentLocation && (
+        {locationError ? (
+          <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center">
+                <AlertCircle className="h-5 w-5 text-yellow-500 mr-2" />
+                <div>
+                  <p className="text-yellow-700 text-sm font-medium">Location Required</p>
+                  <p className="text-yellow-600 text-sm">{locationError}</p>
+                </div>
+              </div>
+              <button
+                onClick={refreshLocation}
+                className="flex items-center text-yellow-700 hover:text-yellow-800 font-medium text-sm"
+              >
+                <RefreshCw className="h-4 w-4 mr-1" />
+                Retry
+              </button>
+            </div>
+          </div>
+        ) : currentLocation ? (
+          <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center">
+                <MapPin className="h-5 w-5 text-green-500 mr-2" />
+                <p className="text-green-700 text-sm">
+                  Location active - showing requests within 4km radius
+                </p>
+              </div>
+              <button
+                onClick={refreshLocation}
+                className="flex items-center text-green-700 hover:text-green-800 font-medium text-sm"
+              >
+                <RefreshCw className="h-4 w-4 mr-1" />
+                Refresh
+              </button>
+            </div>
+          </div>
+        ) : (
           <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
             <div className="flex items-center">
-              <MapPin className="h-5 w-5 text-blue-500 mr-2" />
-              <p className="text-blue-700 text-sm">
-                Location active - showing requests within 4km radius
-              </p>
+              <Clock className="h-5 w-5 text-blue-500 mr-2" />
+              <p className="text-blue-700 text-sm">Getting your location...</p>
             </div>
           </div>
         )}
@@ -395,7 +500,7 @@ export const CollectorDashboard: React.FC = () => {
             <div className="p-4 sm:p-6 border-b border-gray-200">
               <h3 className="text-lg font-semibold text-gray-900">Available Requests</h3>
               <p className="text-sm text-gray-600">
-                {currentLocation ? 'Requests within 4km of your location' : 'All pending requests'}
+                {currentLocation ? 'Requests within 4km of your location' : 'Enable location to see nearby requests'}
               </p>
             </div>
             
@@ -404,15 +509,26 @@ export const CollectorDashboard: React.FC = () => {
                 <div className="flex items-center justify-center py-8">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600"></div>
                 </div>
+              ) : !currentLocation ? (
+                <div className="text-center py-8">
+                  <MapPin className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                  <h4 className="text-lg font-medium text-gray-900 mb-2">Location Required</h4>
+                  <p className="text-gray-600 text-sm mb-4">
+                    Please enable location access to see collection requests near you.
+                  </p>
+                  <button
+                    onClick={refreshLocation}
+                    className="bg-green-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-green-700 transition-colors"
+                  >
+                    Enable Location
+                  </button>
+                </div>
               ) : availableRequests.length === 0 ? (
                 <div className="text-center py-8">
                   <Trash2 className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                   <h4 className="text-lg font-medium text-gray-900 mb-2">No requests available</h4>
                   <p className="text-gray-600 text-sm">
-                    {currentLocation 
-                      ? 'No collection requests within 4km of your location.' 
-                      : 'Check back later for new collection opportunities.'
-                    }
+                    No collection requests within 4km of your location. Check back later for new opportunities.
                   </p>
                 </div>
               ) : (
