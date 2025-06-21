@@ -30,10 +30,15 @@ interface AuthProviderProps {
   children: ReactNode;
 }
 
+// Session timeout configuration
+const SESSION_TIMEOUT = 60 * 1000; // 1 minute in milliseconds
+const ACTIVITY_CHECK_INTERVAL = 10 * 1000; // Check every 10 seconds
+
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const [lastActivity, setLastActivity] = useState<number>(Date.now());
   const [verification, setVerification] = useState<VerificationState>({
     emailSent: false,
     phoneSent: false,
@@ -45,9 +50,104 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   // Get the correct redirect URL - always use custom domain
   const getRedirectUrl = () => {
-    // Always use the custom domain for OAuth redirects
     return 'https://scrubbed.online';
   };
+
+  // Clear session and force fresh authentication
+  const clearSessionAndReload = async () => {
+    console.log('Clearing session due to timeout/inactivity');
+    
+    // Clear all local state
+    setUser(null);
+    setSession(null);
+    setVerification({
+      emailSent: false,
+      phoneSent: false,
+      emailVerified: false,
+      phoneVerified: false,
+      isVerifying: false,
+      error: null,
+    });
+
+    // Clear Supabase session
+    await supabase.auth.signOut();
+    
+    // Clear any stored session data
+    localStorage.removeItem('supabase.auth.token');
+    sessionStorage.clear();
+    
+    // Force reload to start fresh
+    window.location.reload();
+  };
+
+  // Track user activity
+  const updateActivity = () => {
+    setLastActivity(Date.now());
+  };
+
+  // Set up activity tracking
+  useEffect(() => {
+    const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart', 'click'];
+    
+    const handleActivity = () => {
+      updateActivity();
+    };
+
+    // Add event listeners for user activity
+    events.forEach(event => {
+      document.addEventListener(event, handleActivity, true);
+    });
+
+    return () => {
+      events.forEach(event => {
+        document.removeEventListener(event, handleActivity, true);
+      });
+    };
+  }, []);
+
+  // Session timeout checker
+  useEffect(() => {
+    if (!session) return;
+
+    const timeoutChecker = setInterval(() => {
+      const now = Date.now();
+      const timeSinceLastActivity = now - lastActivity;
+
+      console.log(`Time since last activity: ${timeSinceLastActivity}ms`);
+
+      if (timeSinceLastActivity > SESSION_TIMEOUT) {
+        console.log('Session timeout reached, clearing session');
+        clearSessionAndReload();
+      }
+    }, ACTIVITY_CHECK_INTERVAL);
+
+    return () => clearInterval(timeoutChecker);
+  }, [session, lastActivity]);
+
+  // Clear session on page refresh/reload
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      console.log('Page unloading, clearing session');
+      localStorage.removeItem('supabase.auth.token');
+      sessionStorage.clear();
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        console.log('Page hidden, clearing session');
+        localStorage.removeItem('supabase.auth.token');
+        sessionStorage.clear();
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
 
   // Send welcome email function
   const sendWelcomeEmail = async (userEmail: string, userName: string, userType: 'dumper' | 'collector') => {
@@ -103,7 +203,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         `
       };
 
-      // Try to send email via Supabase Edge Function (if available)
       try {
         await supabase.functions.invoke('send-welcome-email', {
           body: emailContent
@@ -111,11 +210,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         console.log('Welcome email sent successfully');
       } catch (emailError) {
         console.log('Welcome email service not configured, skipping email send');
-        // Don't throw error - email is nice to have but not critical
       }
     } catch (error) {
       console.error('Error sending welcome email:', error);
-      // Don't throw error - email is nice to have but not critical
     }
   };
 
@@ -124,7 +221,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
     const initializeAuth = async () => {
       try {
-        console.log('Initializing auth...');
+        console.log('Initializing auth with aggressive session management...');
+        
+        // Clear any existing session data on initialization
+        localStorage.removeItem('supabase.auth.token');
+        sessionStorage.clear();
         
         // Check if we're handling an OAuth callback
         const urlParams = new URLSearchParams(window.location.search);
@@ -132,7 +233,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         const refreshToken = urlParams.get('refresh_token');
         
         if (accessToken && refreshToken) {
-          console.log('OAuth callback detected, setting session...');
+          console.log('OAuth callback detected, setting fresh session...');
           
           // Set the session from URL parameters
           const { data, error } = await supabase.auth.setSession({
@@ -142,14 +243,34 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           
           if (error) {
             console.error('Error setting session from OAuth callback:', error);
+            setLoading(false);
+            return;
           } else {
-            console.log('Session set successfully from OAuth callback');
+            console.log('Fresh session set successfully from OAuth callback');
             // Clean up URL parameters
             window.history.replaceState({}, document.title, window.location.pathname);
+            // Update activity timestamp
+            updateActivity();
+          }
+        } else {
+          // No OAuth callback, check for existing session
+          const { data: { session }, error } = await supabase.auth.getSession();
+          
+          if (error) {
+            console.error('Error getting session:', error);
+            setLoading(false);
+            return;
+          }
+
+          if (session) {
+            console.log('Existing session found, but clearing it for fresh start');
+            await supabase.auth.signOut();
+            setLoading(false);
+            return;
           }
         }
 
-        // Get current session
+        // Get current session after potential OAuth setup
         const { data: { session }, error } = await supabase.auth.getSession();
 
         if (!mounted) return;
@@ -164,6 +285,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         setSession(session);
         
         if (session?.user) {
+          updateActivity(); // Mark as active
           await fetchUserProfile(session.user.id);
         } else {
           setLoading(false);
@@ -188,6 +310,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       setSession(session);
       
       if (session?.user) {
+        updateActivity(); // Mark as active
+        
         // Create profile if it doesn't exist (for new Google users)
         if (event === 'SIGNED_IN') {
           await ensureProfileExists(session.user);
@@ -215,17 +339,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   // Helper function to get display name from Google user data
   const getDisplayName = (supabaseUser: SupabaseUser): string => {
-    // Try to get full name from Google metadata
     if (supabaseUser.user_metadata?.full_name) {
       return supabaseUser.user_metadata.full_name;
     }
     
-    // Try to get name from Google metadata
     if (supabaseUser.user_metadata?.name) {
       return supabaseUser.user_metadata.name;
     }
     
-    // Try to construct from first_name and last_name
     const firstName = supabaseUser.user_metadata?.given_name || supabaseUser.user_metadata?.first_name;
     const lastName = supabaseUser.user_metadata?.family_name || supabaseUser.user_metadata?.last_name;
     
@@ -237,7 +358,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       return firstName;
     }
     
-    // Fallback to email username
     if (supabaseUser.email) {
       const emailUsername = supabaseUser.email.split('@')[0];
       return emailUsername.charAt(0).toUpperCase() + emailUsername.slice(1);
@@ -301,12 +421,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         }));
       } else {
         console.log('No profile found, creating basic user object');
-        // User exists but no profile - create a basic user object
         const basicUser = {
           id: userId,
           email: session?.user?.email || '',
           fullName: getDisplayName(session?.user!) || null,
-          userType: 'dumper' as const, // Default, will be updated during onboarding
+          userType: 'dumper' as const,
           phone: null,
           address: null,
           emailVerified: true,
@@ -317,17 +436,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         
         setUser(basicUser);
         
-        // Try to create the profile in the database
         try {
           await ensureProfileExists(session?.user);
         } catch (profileError) {
           console.error('Failed to create profile:', profileError);
-          // Don't block the user, they can still use the app
         }
       }
     } catch (error: any) {
       console.error('Error fetching user profile:', error);
-      // Set a basic user object to prevent infinite loading
       setUser({
         id: userId,
         email: session?.user?.email || '',
@@ -359,7 +475,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
       if (checkError && checkError.code === 'PGRST116') {
         console.log('Creating new profile');
-        // Get user type from session metadata (set during sign-in)
         const userType = supabaseUser.user_metadata?.user_type || 'dumper';
         
         const profileData = {
@@ -369,7 +484,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           user_type: userType,
           phone: supabaseUser.user_metadata?.phone || null,
           address: null,
-          email_verified: true, // Google users are automatically verified
+          email_verified: true,
           phone_verified: false,
         };
 
@@ -395,7 +510,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       }
     } catch (error: any) {
       console.error('Error ensuring profile exists:', error);
-      throw error; // Re-throw to handle in calling function
+      throw error;
     }
   };
 
@@ -403,10 +518,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     setLoading(true);
     
     try {
-      // Always use the custom domain for OAuth redirects
+      // Clear any existing session before signing in
+      await supabase.auth.signOut();
+      localStorage.removeItem('supabase.auth.token');
+      sessionStorage.clear();
+      
       const redirectTo = getRedirectUrl();
       
-      console.log('Starting Google sign-in for:', userType, 'redirectTo:', redirectTo);
+      console.log('Starting fresh Google sign-in for:', userType, 'redirectTo:', redirectTo);
       
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
@@ -416,7 +535,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             access_type: 'offline',
             prompt: 'consent',
           },
-          // Store user type in metadata to use during profile creation
           data: {
             user_type: userType,
           },
@@ -436,28 +554,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const signOut = async () => {
     try {
-      // Sign out and redirect to the correct domain
-      const { error } = await supabase.auth.signOut();
-      if (error) throw error;
-      
-      // Reset verification state on sign out
-      setVerification({
-        emailSent: false,
-        phoneSent: false,
-        emailVerified: false,
-        phoneVerified: false,
-        isVerifying: false,
-        error: null,
-      });
-
-      // Redirect to the custom domain after sign out
-      const redirectUrl = getRedirectUrl();
-      if (typeof window !== 'undefined') {
-        // Small delay to ensure sign out is processed
-        setTimeout(() => {
-          window.location.href = redirectUrl;
-        }, 100);
-      }
+      await clearSessionAndReload();
     } catch (error) {
       console.error('Error signing out:', error);
       throw error;
@@ -470,7 +567,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     try {
       console.log('Updating profile with:', updates);
       
-      // First, ensure the profile exists
       const { data: existingProfile, error: checkError } = await supabase
         .from('profiles')
         .select('id')
@@ -478,7 +574,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         .single();
 
       if (checkError && checkError.code === 'PGRST116') {
-        // Profile doesn't exist, create it first
         console.log('Creating profile during update');
         const { error: createError } = await supabase
           .from('profiles')
@@ -500,7 +595,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       } else if (checkError) {
         throw checkError;
       } else {
-        // Profile exists, update it
         const { error } = await supabase
           .from('profiles')
           .update({
@@ -515,10 +609,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         if (error) throw error;
       }
 
-      // Update local user state
       const updatedUser = { ...user, ...updates };
       console.log('Updated user state:', updatedUser);
       setUser(updatedUser);
+      updateActivity(); // Mark as active after update
     } catch (error) {
       console.error('Error updating profile:', error);
       throw error;
@@ -543,6 +637,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         emailSent: true,
         isVerifying: false,
       }));
+      updateActivity();
     } catch (error: any) {
       console.error('Error resending email verification:', error);
       setVerification(prev => ({
@@ -558,7 +653,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     setVerification(prev => ({ ...prev, isVerifying: true, error: null }));
 
     try {
-      // Call edge function to send SMS
       const { data, error } = await supabase.functions.invoke('send-sms', {
         body: { phone },
       });
@@ -570,6 +664,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         phoneSent: true,
         isVerifying: false,
       }));
+      updateActivity();
     } catch (error: any) {
       console.error('Error sending phone verification:', error);
       setVerification(prev => ({
@@ -587,14 +682,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     setVerification(prev => ({ ...prev, isVerifying: true, error: null }));
 
     try {
-      // Call edge function to verify phone code
       const { data, error } = await supabase.functions.invoke('verify-phone', {
         body: { code },
       });
 
       if (error) throw error;
 
-      // Update user profile to mark phone as verified
       const { error: updateError } = await supabase
         .from('profiles')
         .update({
@@ -605,13 +698,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
       if (updateError) throw updateError;
 
-      // Update local state
       setUser(prev => prev ? { ...prev, phoneVerified: true } : null);
       setVerification(prev => ({
         ...prev,
         phoneVerified: true,
         isVerifying: false,
       }));
+      updateActivity();
     } catch (error: any) {
       console.error('Error verifying phone code:', error);
       setVerification(prev => ({
