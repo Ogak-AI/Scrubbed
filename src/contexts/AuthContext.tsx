@@ -124,16 +124,33 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
     const initializeAuth = async () => {
       try {
-        // Get initial session with timeout
-        const sessionPromise = supabase.auth.getSession();
-        const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Session fetch timeout')), 5000)
-        );
+        console.log('Initializing auth...');
+        
+        // Check if we're handling an OAuth callback
+        const urlParams = new URLSearchParams(window.location.search);
+        const accessToken = urlParams.get('access_token');
+        const refreshToken = urlParams.get('refresh_token');
+        
+        if (accessToken && refreshToken) {
+          console.log('OAuth callback detected, setting session...');
+          
+          // Set the session from URL parameters
+          const { data, error } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken,
+          });
+          
+          if (error) {
+            console.error('Error setting session from OAuth callback:', error);
+          } else {
+            console.log('Session set successfully from OAuth callback');
+            // Clean up URL parameters
+            window.history.replaceState({}, document.title, window.location.pathname);
+          }
+        }
 
-        const { data: { session }, error } = await Promise.race([
-          sessionPromise,
-          timeoutPromise
-        ]) as any;
+        // Get current session
+        const { data: { session }, error } = await supabase.auth.getSession();
 
         if (!mounted) return;
 
@@ -143,6 +160,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           return;
         }
 
+        console.log('Current session:', session?.user?.id);
         setSession(session);
         
         if (session?.user) {
@@ -232,21 +250,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     try {
       console.log('Fetching profile for user:', userId);
       
-      // Add timeout to profile fetch
-      const profilePromise = supabase
+      const { data, error } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', userId)
         .single();
-
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Profile fetch timeout')), 3000)
-      );
-
-      const { data, error } = await Promise.race([
-        profilePromise,
-        timeoutPromise
-      ]) as any;
 
       if (error && error.code !== 'PGRST116') {
         console.error('Error fetching user profile:', error);
@@ -306,22 +314,19 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       }
     } catch (error: any) {
       console.error('Error fetching user profile:', error);
-      // Don't leave user in loading state indefinitely
-      if (error.message === 'Profile fetch timeout') {
-        // Set a basic user object to prevent infinite loading
-        setUser({
-          id: userId,
-          email: session?.user?.email || '',
-          fullName: getDisplayName(session?.user!) || null,
-          userType: 'dumper',
-          phone: null,
-          address: null,
-          emailVerified: true,
-          phoneVerified: false,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        });
-      }
+      // Set a basic user object to prevent infinite loading
+      setUser({
+        id: userId,
+        email: session?.user?.email || '',
+        fullName: getDisplayName(session?.user!) || null,
+        userType: 'dumper',
+        phone: null,
+        address: null,
+        emailVerified: true,
+        phoneVerified: false,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
     } finally {
       setLoading(false);
     }
@@ -333,21 +338,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     try {
       console.log('Ensuring profile exists for:', supabaseUser.id);
       
-      // Add timeout to profile check
-      const checkPromise = supabase
+      const { data: existingProfile, error: checkError } = await supabase
         .from('profiles')
         .select('id')
         .eq('id', supabaseUser.id)
         .single();
-
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Profile check timeout')), 2000)
-      );
-
-      const { data: existingProfile, error: checkError } = await Promise.race([
-        checkPromise,
-        timeoutPromise
-      ]) as any;
 
       if (checkError && checkError.code === 'PGRST116') {
         console.log('Creating new profile');
@@ -367,21 +362,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
         console.log('Creating profile with data:', profileData);
 
-        // Create new profile for Google user with timeout
-        const createPromise = supabase
+        const { data: newProfile, error: profileError } = await supabase
           .from('profiles')
           .insert(profileData)
           .select()
           .single();
-
-        const createTimeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Profile creation timeout')), 3000)
-        );
-
-        const { data: newProfile, error: profileError } = await Promise.race([
-          createPromise,
-          createTimeoutPromise
-        ]) as any;
 
         if (profileError) {
           console.error('Error creating profile:', profileError);
