@@ -3,7 +3,6 @@ import { MapPin, Clock, Trash2, User, Settings, LogOut, Bell, Star, Navigation, 
 import { useAuth } from '../../contexts/AuthContext';
 import { useCollectors } from '../../hooks/useCollectors';
 import { useWasteRequests } from '../../hooks/useWasteRequests';
-import { CollectorOnboarding } from './CollectorOnboarding';
 import { ProfileSettings } from '../common/ProfileSettings';
 
 export const CollectorDashboard: React.FC = () => {
@@ -16,6 +15,7 @@ export const CollectorDashboard: React.FC = () => {
   const [showProfileSettings, setShowProfileSettings] = useState(false);
   const [currentLocation, setCurrentLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
+  const [creatingProfile, setCreatingProfile] = useState(false);
 
   // Filter requests for collector view - only show pending requests within 4km from dumpers
   const availableRequests = requests.filter(r => {
@@ -48,6 +48,36 @@ export const CollectorDashboard: React.FC = () => {
       setIsAvailable(myCollectorProfile.isAvailable);
     }
   }, [myCollectorProfile]);
+
+  // Auto-create collector profile if it doesn't exist
+  useEffect(() => {
+    const autoCreateCollectorProfile = async () => {
+      if (user?.userType === 'collector' && !myCollectorProfile && !collectorsLoading && !creatingProfile) {
+        setCreatingProfile(true);
+        try {
+          console.log('Auto-creating collector profile for user:', user.id);
+          
+          // Create a basic collector profile with default values
+          const defaultProfileData = {
+            specializations: ['Household', 'Recyclable'], // Default specializations
+            serviceRadius: 10, // Default 10km radius
+            vehicleType: 'pickup_truck',
+            experience: 'intermediate',
+          };
+
+          await createCollectorProfile(defaultProfileData);
+          console.log('Collector profile created successfully');
+        } catch (error) {
+          console.error('Error auto-creating collector profile:', error);
+          // Don't block the user if profile creation fails
+        } finally {
+          setCreatingProfile(false);
+        }
+      }
+    };
+
+    autoCreateCollectorProfile();
+  }, [user, myCollectorProfile, collectorsLoading, createCollectorProfile, creatingProfile]);
 
   // Get current location on component mount and update periodically
   useEffect(() => {
@@ -112,14 +142,6 @@ export const CollectorDashboard: React.FC = () => {
 
     return () => clearInterval(locationInterval);
   }, [myCollectorProfile, updateLocation, isAvailable]);
-
-  const handleCompleteOnboarding = async (profileData: any) => {
-    try {
-      await createCollectorProfile(profileData);
-    } catch (error) {
-      console.error('Error creating collector profile:', error);
-    }
-  };
 
   const handleAvailabilityToggle = async () => {
     try {
@@ -215,20 +237,22 @@ export const CollectorDashboard: React.FC = () => {
     return distance;
   };
 
-  if (collectorsLoading) {
+  if (collectorsLoading || creatingProfile) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600"></div>
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">
+            {creatingProfile ? 'Setting up your collector profile...' : 'Loading your account...'}
+          </p>
+          <p className="text-sm text-gray-500 mt-2">This should only take a moment</p>
+        </div>
       </div>
     );
   }
 
   if (showProfileSettings) {
     return <ProfileSettings onClose={handleCloseProfileSettings} />;
-  }
-
-  if (!myCollectorProfile) {
-    return <CollectorOnboarding onComplete={handleCompleteOnboarding} />;
   }
 
   return (
@@ -476,7 +500,7 @@ export const CollectorDashboard: React.FC = () => {
               <div>
                 <p className="text-xs sm:text-sm font-medium text-gray-600">Rating</p>
                 <p className="text-lg sm:text-2xl font-bold text-yellow-600">
-                  {myCollectorProfile.rating ? myCollectorProfile.rating.toFixed(1) : 'New'}
+                  {myCollectorProfile?.rating ? myCollectorProfile.rating.toFixed(1) : 'New'}
                 </p>
               </div>
               <Star className="h-6 w-6 sm:h-8 sm:w-8 text-yellow-600" />
@@ -487,7 +511,7 @@ export const CollectorDashboard: React.FC = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs sm:text-sm font-medium text-gray-600">Collections</p>
-                <p className="text-lg sm:text-2xl font-bold text-purple-600">{myCollectorProfile.totalCollections}</p>
+                <p className="text-lg sm:text-2xl font-bold text-purple-600">{myCollectorProfile?.totalCollections || 0}</p>
               </div>
               <Navigation className="h-6 w-6 sm:h-8 sm:w-8 text-purple-600" />
             </div>
