@@ -153,48 +153,62 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
     const initializeAuth = async () => {
       try {
-        console.log('Initializing auth - clearing all existing sessions...');
-        
-        // ALWAYS clear all session data on page load/refresh
-        await clearAllSessionData();
+        console.log('Initializing auth...');
         
         // Check if we're handling an OAuth callback
         const urlParams = new URLSearchParams(window.location.search);
         const accessToken = urlParams.get('access_token');
         const refreshToken = urlParams.get('refresh_token');
+        const error = urlParams.get('error');
+        
+        if (error) {
+          console.error('OAuth error:', error);
+          // Clear URL parameters and redirect to home
+          window.history.replaceState({}, document.title, window.location.pathname);
+          setLoading(false);
+          return;
+        }
         
         if (accessToken && refreshToken) {
           console.log('OAuth callback detected, setting fresh session...');
           
+          // Clear any existing session first
+          await clearAllSessionData();
+          
           // Set the session from URL parameters
-          const { data, error } = await supabase.auth.setSession({
+          const { data, error: sessionError } = await supabase.auth.setSession({
             access_token: accessToken,
             refresh_token: refreshToken,
           });
           
-          if (error) {
-            console.error('Error setting session from OAuth callback:', error);
+          if (sessionError) {
+            console.error('Error setting session from OAuth callback:', sessionError);
+            // Clear URL parameters and redirect to home
+            window.history.replaceState({}, document.title, window.location.pathname);
             setLoading(false);
             return;
           } else {
             console.log('Fresh session set successfully from OAuth callback');
             // Clean up URL parameters
             window.history.replaceState({}, document.title, window.location.pathname);
+            
+            // Set session and continue with profile fetch
+            setSession(data.session);
+            if (data.session?.user) {
+              await ensureProfileExists(data.session.user);
+              await fetchUserProfile(data.session.user.id);
+            }
+            return;
           }
-        } else {
-          // No OAuth callback and no existing session allowed
-          console.log('No OAuth callback - user must sign in');
-          setLoading(false);
-          return;
         }
-
-        // Get current session after OAuth setup
-        const { data: { session }, error } = await supabase.auth.getSession();
+        
+        // No OAuth callback - check for existing session
+        const { data: { session }, error: getSessionError } = await supabase.auth.getSession();
 
         if (!mounted) return;
 
-        if (error) {
-          console.error('Error getting session:', error);
+        if (getSessionError) {
+          console.error('Error getting session:', getSessionError);
           setLoading(false);
           return;
         }
@@ -205,6 +219,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         if (session?.user) {
           await fetchUserProfile(session.user.id);
         } else {
+          console.log('No existing session - user must sign in');
           setLoading(false);
         }
       } catch (error) {
@@ -294,24 +309,25 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       if (error && error.code !== 'PGRST116') {
         console.error('Error fetching user profile:', error);
         // Create a basic user object to prevent infinite loading
-        setUser({
+        const basicUser = {
           id: userId,
           email: session?.user?.email || '',
           fullName: getDisplayName(session?.user!) || null,
-          userType: 'dumper',
+          userType: 'dumper' as const,
           phone: null,
           address: null,
           emailVerified: true,
           phoneVerified: false,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
-        });
+        };
+        setUser(basicUser);
         setLoading(false);
         return;
       }
 
       if (data) {
-        console.log('Profile data:', data);
+        console.log('Profile data found:', data);
         const userData = {
           id: data.id,
           email: data.email,
@@ -359,18 +375,20 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       }
     } catch (error: any) {
       console.error('Error fetching user profile:', error);
-      setUser({
+      // Fallback user object
+      const fallbackUser = {
         id: userId,
         email: session?.user?.email || '',
         fullName: getDisplayName(session?.user!) || null,
-        userType: 'dumper',
+        userType: 'dumper' as const,
         phone: null,
         address: null,
         emailVerified: true,
         phoneVerified: false,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-      });
+      };
+      setUser(fallbackUser);
     } finally {
       setLoading(false);
     }

@@ -47,7 +47,7 @@ const AppContent: React.FC = () => {
     return <VerificationPage />;
   }
 
-  // Redirect to appropriate dashboard based on user type
+  // Get the appropriate dashboard component based on user type
   const getDashboardComponent = () => {
     switch (user.userType) {
       case 'dumper':
@@ -61,15 +61,26 @@ const AppContent: React.FC = () => {
     }
   };
 
+  // User is authenticated - show their dashboard
   return (
     <Router>
       <Routes>
+        {/* Main dashboard route - redirect to appropriate dashboard */}
         <Route path="/" element={getDashboardComponent()} />
         <Route path="/dashboard" element={getDashboardComponent()} />
-        <Route path="/verify" element={<VerificationPage />} />
+        
+        {/* Specific dashboard routes */}
+        <Route path="/dumper" element={<DumperDashboard />} />
+        <Route path="/collector" element={<CollectorDashboard />} />
         <Route path="/admin" element={<AdminDashboard />} />
+        
+        {/* Verification route */}
+        <Route path="/verify" element={<VerificationPage />} />
+        
         {/* Redirect any auth routes to dashboard if already logged in */}
         <Route path="/auth/*" element={<Navigate to="/" replace />} />
+        
+        {/* Catch all - redirect to dashboard */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Router>
