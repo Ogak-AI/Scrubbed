@@ -34,6 +34,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const [initialized, setInitialized] = useState(false);
   const [verification, setVerification] = useState<VerificationState>({
     emailSent: false,
     phoneSent: false,
@@ -117,17 +118,30 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   useEffect(() => {
     let mounted = true;
+    let timeoutId: NodeJS.Timeout;
 
     const initializeAuth = async () => {
       try {
         console.log('Initializing auth...');
         
+        // Set a timeout to prevent infinite loading
+        timeoutId = setTimeout(() => {
+          if (mounted && !initialized) {
+            console.log('Auth initialization timeout, setting loading to false');
+            setLoading(false);
+            setInitialized(true);
+          }
+        }, 10000); // 10 second timeout
+
         // Get the current session (this handles OAuth callbacks automatically)
         const { data: { session }, error } = await supabase.auth.getSession();
         
         if (error) {
           console.error('Error getting session:', error);
-          setLoading(false);
+          if (mounted) {
+            setLoading(false);
+            setInitialized(true);
+          }
           return;
         }
 
@@ -143,17 +157,32 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         
         if (session?.user) {
           console.log('Found authenticated user:', session.user.id);
-          await ensureProfileExists(session.user);
-          await fetchUserProfile(session.user.id);
+          try {
+            await ensureProfileExists(session.user);
+            await fetchUserProfile(session.user.id);
+          } catch (profileError) {
+            console.error('Profile error:', profileError);
+            // Don't block the app if profile creation fails
+            setLoading(false);
+            setInitialized(true);
+          }
         } else {
           console.log('No authenticated user found');
-          setLoading(false);
+          if (mounted) {
+            setLoading(false);
+            setInitialized(true);
+          }
         }
         
       } catch (error) {
         console.error('Auth initialization error:', error);
         if (mounted) {
           setLoading(false);
+          setInitialized(true);
+        }
+      } finally {
+        if (timeoutId) {
+          clearTimeout(timeoutId);
         }
       }
     };
@@ -168,6 +197,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
       console.log('Auth state change:', event, session?.user?.id);
       
+      // Clear any existing timeout
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+      
       // Clean up URL hash on any auth state change
       if (window.location.hash && window.location.hash.includes('access_token')) {
         console.log('Cleaning up OAuth hash after auth state change');
@@ -180,25 +214,40 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         // Create profile if it doesn't exist (for new Google users)
         if (event === 'SIGNED_IN') {
           console.log('User signed in, ensuring profile exists');
-          await ensureProfileExists(session.user);
-          
-          // Send welcome email for new sign-ins
-          const userType = session.user.user_metadata?.user_type || 'dumper';
-          const userName = getDisplayName(session.user);
-          
-          if (session.user.email) {
-            await sendWelcomeEmail(session.user.email, userName, userType);
+          try {
+            await ensureProfileExists(session.user);
+            
+            // Send welcome email for new sign-ins
+            const userType = session.user.user_metadata?.user_type || 'dumper';
+            const userName = getDisplayName(session.user);
+            
+            if (session.user.email) {
+              await sendWelcomeEmail(session.user.email, userName, userType);
+            }
+          } catch (error) {
+            console.error('Error in sign-in process:', error);
           }
         }
-        await fetchUserProfile(session.user.id);
+        
+        try {
+          await fetchUserProfile(session.user.id);
+        } catch (error) {
+          console.error('Error fetching profile:', error);
+          setLoading(false);
+          setInitialized(true);
+        }
       } else {
         setUser(null);
         setLoading(false);
+        setInitialized(true);
       }
     });
 
     return () => {
       mounted = false;
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
       subscription.unsubscribe();
     };
   }, []);
@@ -245,20 +294,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       if (error && error.code !== 'PGRST116') {
         console.error('Error fetching user profile:', error);
         // Create a basic user object to prevent infinite loading
-        const basicUser = {
-          id: userId,
-          email: session?.user?.email || '',
-          fullName: getDisplayName(session?.user!) || null,
-          userType: 'dumper' as const,
-          phone: null,
-          address: null,
-          emailVerified: true,
-          phoneVerified: false,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        };
+        const basicUser = createBasicUser(userId);
         setUser(basicUser);
         setLoading(false);
+        setInitialized(true);
         return;
       }
 
@@ -288,19 +327,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         }));
       } else {
         console.log('No profile found, creating basic user object');
-        const basicUser = {
-          id: userId,
-          email: session?.user?.email || '',
-          fullName: getDisplayName(session?.user!) || null,
-          userType: 'dumper' as const,
-          phone: null,
-          address: null,
-          emailVerified: true,
-          phoneVerified: false,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        };
-        
+        const basicUser = createBasicUser(userId);
         setUser(basicUser);
         
         try {
@@ -312,22 +339,27 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     } catch (error: any) {
       console.error('Error fetching user profile:', error);
       // Fallback user object
-      const fallbackUser = {
-        id: userId,
-        email: session?.user?.email || '',
-        fullName: getDisplayName(session?.user!) || null,
-        userType: 'dumper' as const,
-        phone: null,
-        address: null,
-        emailVerified: true,
-        phoneVerified: false,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
+      const fallbackUser = createBasicUser(userId);
       setUser(fallbackUser);
     } finally {
       setLoading(false);
+      setInitialized(true);
     }
+  };
+
+  const createBasicUser = (userId: string): User => {
+    return {
+      id: userId,
+      email: session?.user?.email || '',
+      fullName: getDisplayName(session?.user!) || null,
+      userType: 'dumper' as const,
+      phone: null,
+      address: null,
+      emailVerified: true,
+      phoneVerified: false,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
   };
 
   const ensureProfileExists = async (supabaseUser?: SupabaseUser) => {
@@ -440,6 +472,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       // Reset user and session state
       setUser(null);
       setSession(null);
+      setInitialized(false);
       
       // Redirect to the custom domain
       const redirectUrl = getRedirectUrl();
@@ -604,7 +637,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const value = {
     user,
     session,
-    loading,
+    loading: loading && !initialized,
     verification,
     signInWithGoogle,
     signOut,

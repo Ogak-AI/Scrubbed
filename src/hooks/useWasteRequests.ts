@@ -79,28 +79,39 @@ export const useWasteRequests = () => {
 
       console.log('Fetching requests for user:', user.id, 'type:', user.userType);
 
-      // Ensure user profile exists before fetching requests
-      await ensureUserProfileExists();
+      // Add timeout to prevent infinite loading
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Request timeout')), 15000); // 15 second timeout
+      });
 
-      let query = supabase
-        .from('waste_requests')
-        .select('*')
-        .order('created_at', { ascending: false });
+      const fetchPromise = (async () => {
+        // Ensure user profile exists before fetching requests
+        await ensureUserProfileExists();
 
-      // Filter based on user type
-      if (user.userType === 'dumper') {
-        query = query.eq('dumper_id', user.id);
-      } else if (user.userType === 'collector') {
-        // Collectors can see their own requests and pending requests
-        query = query.or(`collector_id.eq.${user.id},status.eq.pending`);
-      }
+        let query = supabase
+          .from('waste_requests')
+          .select('*')
+          .order('created_at', { ascending: false });
 
-      const { data, error: fetchError } = await query;
+        // Filter based on user type
+        if (user.userType === 'dumper') {
+          query = query.eq('dumper_id', user.id);
+        } else if (user.userType === 'collector') {
+          // Collectors can see their own requests and pending requests
+          query = query.or(`collector_id.eq.${user.id},status.eq.pending`);
+        }
 
-      if (fetchError) {
-        console.error('Supabase error:', fetchError);
-        throw new Error(`Database error: ${fetchError.message}`);
-      }
+        const { data, error: fetchError } = await query;
+
+        if (fetchError) {
+          console.error('Supabase error:', fetchError);
+          throw new Error(`Database error: ${fetchError.message}`);
+        }
+
+        return data;
+      })();
+
+      const data = await Promise.race([fetchPromise, timeoutPromise]) as any[];
 
       console.log('Fetched requests:', data);
 
@@ -318,17 +329,18 @@ export const useWasteRequests = () => {
     }
   }, [user, fetchRequests]);
 
-  // Set up real-time subscription with error handling
+  // Set up real-time subscription with error handling and reduced frequency
   useEffect(() => {
     if (!user) return;
 
     let retryCount = 0;
-    const maxRetries = 3;
+    const maxRetries = 2; // Reduced retries
+    let channel: any = null;
 
     const setupSubscription = () => {
       console.log('Setting up real-time subscription');
       
-      const channel = supabase
+      channel = supabase
         .channel('waste_requests_changes')
         .on(
           'postgres_changes',
@@ -345,7 +357,10 @@ export const useWasteRequests = () => {
               payload.new.collector_id === user.id ||
               payload.new.status === 'pending'
             )) {
-              fetchRequests();
+              // Debounce refetch to avoid too many calls
+              setTimeout(() => {
+                fetchRequests();
+              }, 1000);
             }
           }
         )
@@ -354,14 +369,14 @@ export const useWasteRequests = () => {
           if (status === 'SUBSCRIPTION_ERROR' && retryCount < maxRetries) {
             retryCount++;
             console.log(`Retrying subscription (${retryCount}/${maxRetries})`);
-            setTimeout(setupSubscription, 1000 * retryCount);
+            setTimeout(setupSubscription, 2000 * retryCount);
           }
         });
 
       return channel;
     };
 
-    const channel = setupSubscription();
+    channel = setupSubscription();
 
     return () => {
       if (channel) {

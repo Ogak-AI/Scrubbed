@@ -42,6 +42,8 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: true,
+    // Reduce token refresh frequency to improve performance
+    refreshTokenRetryCount: 3,
   },
   // Add connection pooling and performance optimizations
   db: {
@@ -55,7 +57,16 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
   // Reduce real-time connection overhead
   realtime: {
     params: {
-      eventsPerSecond: 10,
+      eventsPerSecond: 5, // Reduced from 10
     },
   },
+});
+
+// Add connection error handling
+supabase.auth.onAuthStateChange((event, session) => {
+  if (event === 'TOKEN_REFRESHED') {
+    console.log('Token refreshed successfully');
+  } else if (event === 'SIGNED_OUT') {
+    console.log('User signed out');
+  }
 });
