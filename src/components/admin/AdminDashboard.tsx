@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Users, Trash2, MapPin, BarChart3, AlertCircle, LogOut, Bell, User, Menu, X } from 'lucide-react';
-import { useAuth } from '../../contexts/AuthContext';
+import { useAuth } from '../../hooks/useAuth';
 
 export const AdminDashboard: React.FC = () => {
   const { user, signOut } = useAuth();

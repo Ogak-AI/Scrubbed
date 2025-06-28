@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase, createSafeRealtimeSubscription } from '../lib/supabase';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from './useAuth';
 import type { WasteRequest } from '../types';
 
 interface CreateRequestData {
