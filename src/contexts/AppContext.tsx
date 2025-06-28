@@ -10,15 +10,6 @@ interface AppContextType {
 // Create the context with default values
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
-// Custom hook to use the app context
-export const useAppContext = () => {
-  const context = useContext(AppContext);
-  if (context === undefined) {
-    throw new Error('useAppContext must be used within an AppProvider');
-  }
-  return context;
-};
-
 // AppProvider component that wraps the app and provides context
 interface AppProviderProps {
   children: ReactNode;
@@ -36,4 +27,13 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
       {children}
     </AppContext.Provider>
   );
+};
+
+// Custom hook to use the app context
+export const useAppContext = () => {
+  const context = useContext(AppContext);
+  if (context === undefined) {
+    throw new Error('useAppContext must be used within an AppProvider');
+  }
+  return context;
 };
