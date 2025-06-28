@@ -19,14 +19,6 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
-};
-
 interface AuthProviderProps {
   children: ReactNode;
 }
@@ -198,80 +190,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     return 'User';
   };
 
-  const fetchUserProfile = useCallback(async (userId: string) => {
-    try {
-      console.log('Fetching profile for user:', userId);
-      
-      // Use a shorter timeout for profile fetching
-      const profilePromise = supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .single();
-
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Profile fetch timeout')), 3000); // Reduced to 3 seconds
-      });
-
-      const { data, error } = await Promise.race([profilePromise, timeoutPromise]) as PostgrestSingleResponse<Database['public']['Tables']['profiles']['Row']>;
-
-      if (error && error.code !== 'PGRST116') {
-        console.error('Error fetching user profile:', error);
-        // Create a basic user object to prevent infinite loading
-        const basicUser = createBasicUser(userId);
-        setUser(basicUser);
-        setLoading(false);
-        setInitialized(true);
-        return;
-      }
-
-      if (data) {
-        console.log('Profile data found:', data);
-        const userData = {
-          id: data.id,
-          email: data.email,
-          fullName: data.full_name,
-          userType: data.user_type,
-          phone: data.phone,
-          address: data.address,
-          emailVerified: data.email_verified || true,
-          phoneVerified: data.phone_verified || false,
-          createdAt: data.created_at,
-          updatedAt: data.updated_at,
-        };
-        
-        console.log('Setting user data:', userData);
-        setUser(userData);
-        
-        // Update verification state based on user data
-        setVerification(prev => ({
-          ...prev,
-          emailVerified: userData.emailVerified,
-          phoneVerified: userData.phoneVerified,
-        }));
-      } else {
-        console.log('No profile found, creating basic user object');
-        const basicUser = createBasicUser(userId);
-        setUser(basicUser);
-        
-        try {
-          await ensureProfileExists(session?.user);
-        } catch (profileError) {
-          console.error('Failed to create profile:', profileError);
-        }
-      }
-    } catch (error: unknown) {
-      console.error('Error fetching user profile:', error);
-      // Fallback user object
-      const fallbackUser = createBasicUser(userId);
-      setUser(fallbackUser);
-    } finally {
-      setLoading(false);
-      setInitialized(true);
-    }
-  }, [session?.user]);
-
-  const createBasicUser = (userId: string): User => {
+  const createBasicUser = useCallback((userId: string): User => {
     // CRITICAL FIX: Get user type from multiple sources
     let userType: 'dumper' | 'collector' = 'dumper'; // Default fallback
     
@@ -311,7 +230,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
-  };
+  }, [session?.user]);
 
   const ensureProfileExists = useCallback(async (supabaseUser?: SupabaseUser) => {
     if (!supabaseUser) return;
@@ -320,7 +239,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       console.log('Ensuring profile exists for:', supabaseUser.id);
       console.log('User metadata:', supabaseUser.user_metadata);
       
-      const { data: existingProfile, error: checkError } = await supabase
+      const { data, error: checkError } = await supabase
         .from('profiles')
         .select('id')
         .eq('id', supabaseUser.id)
@@ -397,6 +316,79 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       throw error;
     }
   }, []);
+
+  const fetchUserProfile = useCallback(async (userId: string) => {
+    try {
+      console.log('Fetching profile for user:', userId);
+      
+      // Use a shorter timeout for profile fetching
+      const profilePromise = supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single();
+
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Profile fetch timeout')), 3000); // Reduced to 3 seconds
+      });
+
+      const { data, error } = await Promise.race([profilePromise, timeoutPromise]) as PostgrestSingleResponse<Database['public']['Tables']['profiles']['Row']>;
+
+      if (error && error.code !== 'PGRST116') {
+        console.error('Error fetching user profile:', error);
+        // Create a basic user object to prevent infinite loading
+        const basicUser = createBasicUser(userId);
+        setUser(basicUser);
+        setLoading(false);
+        setInitialized(true);
+        return;
+      }
+
+      if (data) {
+        console.log('Profile data found:', data);
+        const userData = {
+          id: data.id,
+          email: data.email,
+          fullName: data.full_name,
+          userType: data.user_type,
+          phone: data.phone,
+          address: data.address,
+          emailVerified: data.email_verified || true,
+          phoneVerified: data.phone_verified || false,
+          createdAt: data.created_at,
+          updatedAt: data.updated_at,
+        };
+        
+        console.log('Setting user data:', userData);
+        setUser(userData);
+        
+        // Update verification state based on user data
+        setVerification(prev => ({
+          ...prev,
+          emailVerified: userData.emailVerified,
+          phoneVerified: userData.phoneVerified,
+        }));
+      } else {
+        console.log('No profile found, creating basic user object');
+        const basicUser = createBasicUser(userId);
+        setUser(basicUser);
+        
+        try {
+          await ensureProfileExists(session?.user);
+        } catch (profileError) {
+          console.error('Failed to create profile:', profileError);
+        }
+      }
+    } catch (error: unknown) {
+      console.error('Error fetching user profile:', error);
+      // Fallback user object
+      const fallbackUser = createBasicUser(userId);
+      setUser(fallbackUser);
+    } finally {
+      setLoading(false);
+      setInitialized(true);
+    }
+  }, [session?.user, createBasicUser, ensureProfileExists]);
 
   useEffect(() => {
     let mounted = true;
@@ -639,7 +631,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     try {
       console.log('Updating profile with:', updates);
       
-      const { data: existingProfile, error: checkError } = await supabase
+      const { data, error: checkError } = await supabase
         .from('profiles')
         .select('id')
         .eq('id', user.id)
@@ -801,4 +793,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+};
+
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (context === undefined) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
 };

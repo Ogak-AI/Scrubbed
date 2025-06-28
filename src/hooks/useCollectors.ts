@@ -15,7 +15,7 @@ export const useCollectors = () => {
 
     try {
       // Check if profile exists
-      const { data: existingProfile, error: checkError } = await supabase
+      const { data, error: checkError } = await supabase
         .from('profiles')
         .select('id')
         .eq('id', user.id)
