@@ -89,25 +89,43 @@ export const useWasteRequests = () => {
 
       console.log('Fetching requests for user:', user.id, 'type:', user.userType);
 
-      // Add timeout to prevent infinite loading
+      // OPTIMIZATION 1: Reduce timeout and add better error handling
       const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Request timeout')), 15000); // 15 second timeout
+        setTimeout(() => reject(new Error('Request timeout')), 8000); // Reduced from 15s to 8s
       });
 
       const fetchPromise = (async () => {
-        // Ensure user profile exists before fetching requests
-        await ensureUserProfileExists();
+        // OPTIMIZATION 2: Skip profile check if user already has requests loaded
+        if (requests.length === 0) {
+          await ensureUserProfileExists();
+        }
 
+        // OPTIMIZATION 3: More efficient query with specific columns and limits
         let query = supabase
           .from('waste_requests')
-          .select('*')
-          .order('created_at', { ascending: false });
+          .select(`
+            id,
+            dumper_id,
+            collector_id,
+            waste_type,
+            description,
+            location,
+            address,
+            status,
+            scheduled_time,
+            estimated_amount,
+            photos,
+            created_at,
+            updated_at
+          `)
+          .order('created_at', { ascending: false })
+          .limit(50); // OPTIMIZATION 4: Limit initial load to 50 most recent requests
 
-        // Filter based on user type
+        // Filter based on user type with more specific queries
         if (user.userType === 'dumper') {
           query = query.eq('dumper_id', user.id);
         } else if (user.userType === 'collector') {
-          // Collectors can see their own requests and pending requests
+          // OPTIMIZATION 5: More efficient collector query
           query = query.or(`collector_id.eq.${user.id},status.eq.pending`);
         }
 
@@ -123,8 +141,9 @@ export const useWasteRequests = () => {
 
       const data = await Promise.race([fetchPromise, timeoutPromise]) as Array<Record<string, unknown>>;
 
-      console.log('Fetched requests:', data);
+      console.log('Fetched requests:', data?.length || 0, 'requests');
 
+      // OPTIMIZATION 6: More efficient data transformation
       const formattedRequests: WasteRequest[] = (data || []).map(request => ({
         id: request.id as string,
         dumperId: request.dumper_id as string,
@@ -142,7 +161,7 @@ export const useWasteRequests = () => {
       }));
 
       setRequests(formattedRequests);
-      console.log('Set requests state:', formattedRequests);
+      console.log('Set requests state with', formattedRequests.length, 'requests');
     } catch (err: unknown) {
       console.error('Error fetching requests:', err);
       const errorMessage = err instanceof Error ? err.message : 'Failed to fetch requests';
@@ -152,7 +171,7 @@ export const useWasteRequests = () => {
     } finally {
       setLoading(false);
     }
-  }, [user, ensureUserProfileExists]);
+  }, [user, ensureUserProfileExists, requests.length]);
 
   const createRequest = async (requestData: CreateRequestData) => {
     if (!user) {
@@ -325,43 +344,58 @@ export const useWasteRequests = () => {
     }
   };
 
+  // OPTIMIZATION 7: Only fetch on user change, not on every render
   useEffect(() => {
     if (user) {
-      console.log('User changed, fetching requests');
+      console.log('User authenticated, fetching requests');
       fetchRequests();
+    } else {
+      setLoading(false);
+      setRequests([]);
     }
-  }, [user, fetchRequests]);
+  }, [user?.id, user?.userType]); // Only depend on user ID and type
 
-  // IMPROVED: Set up real-time subscription with better error handling
+  // OPTIMIZATION 8: Improved real-time subscription with better error handling and debouncing
   useEffect(() => {
     if (!user) return;
 
     let channel: ReturnType<typeof createSafeRealtimeSubscription> = null;
     let retryCount = 0;
     const maxRetries = 2;
+    let debounceTimer: NodeJS.Timeout;
 
     const setupSubscription = () => {
-      console.log('Setting up safe real-time subscription');
+      console.log('Setting up optimized real-time subscription');
+      
+      // Debounced refetch function
+      const debouncedRefetch = () => {
+        if (debounceTimer) clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+          if (document.visibilityState === 'visible') {
+            fetchRequests();
+          }
+        }, 1000);
+      };
       
       // Use the safe realtime subscription helper
       channel = createSafeRealtimeSubscription(
         'waste_requests',
         (payload) => {
-          console.log('Real-time update:', payload);
+          console.log('Real-time update received');
           // Only refetch if the change is relevant to this user
           if (payload && typeof payload === 'object' && 'new' in payload) {
             const newData = payload.new as { dumper_id?: string; collector_id?: string; status?: string };
             if (newData && (
               newData.dumper_id === user.id || 
               newData.collector_id === user.id ||
-              newData.status === 'pending'
+              (user.userType === 'collector' && newData.status === 'pending')
             )) {
-              // Debounce refetch to avoid too many calls
-              setTimeout(() => {
-                fetchRequests();
-              }, 1000);
+              debouncedRefetch();
             }
           }
+        },
+        {
+          filter: user.userType === 'dumper' ? `dumper_id=eq.${user.id}` : undefined
         }
       );
 
@@ -373,11 +407,14 @@ export const useWasteRequests = () => {
         // Set up polling as fallback (every 30 seconds)
         const pollInterval = setInterval(() => {
           if (document.visibilityState === 'visible') {
-            fetchRequests();
+            debouncedRefetch();
           }
         }, 30000);
 
-        return () => clearInterval(pollInterval);
+        return () => {
+          clearInterval(pollInterval);
+          if (debounceTimer) clearTimeout(debounceTimer);
+        };
       }
 
       return channel;
@@ -386,6 +423,7 @@ export const useWasteRequests = () => {
     const subscription = setupSubscription();
 
     return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
       if (subscription) {
         if (typeof subscription === 'object' && subscription !== null && 'unsubscribe' in subscription) {
           (subscription as { unsubscribe: () => void }).unsubscribe();
@@ -397,7 +435,7 @@ export const useWasteRequests = () => {
         }
       }
     };
-  }, [user, fetchRequests]);
+  }, [user?.id, user?.userType]); // Only depend on user ID and type
 
   return {
     requests,

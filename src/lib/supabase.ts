@@ -164,7 +164,7 @@ export const isRealtimeAvailable = () => {
   }
 };
 
-// Helper function to safely create realtime subscriptions
+// OPTIMIZATION: Enhanced helper function to safely create realtime subscriptions with better performance
 export const createSafeRealtimeSubscription = (
   table: string,
   callback: (payload: unknown) => void,
@@ -176,8 +176,11 @@ export const createSafeRealtimeSubscription = (
   }
 
   try {
+    // Create a unique channel name to prevent conflicts
+    const channelName = `${table}_changes_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
     const channel = supabase
-      .channel(`${table}_changes_${Date.now()}`)
+      .channel(channelName)
       .on(
         'postgres_changes',
         {
@@ -199,6 +202,8 @@ export const createSafeRealtimeSubscription = (
           console.warn(`Realtime subscription error for ${table} (non-critical)`);
         } else if (status === 'SUBSCRIBED') {
           console.log(`Realtime subscription active for ${table}`);
+        } else if (status === 'CHANNEL_ERROR') {
+          console.warn(`Realtime channel error for ${table} (non-critical)`);
         }
       });
 

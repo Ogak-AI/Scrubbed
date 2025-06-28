@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Plus, MapPin, Clock, Trash2, User, Settings, LogOut, Bell, Search, AlertCircle, RefreshCw, Menu, X } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useWasteRequests } from '../../hooks/useWasteRequests';
@@ -19,15 +19,25 @@ export const DumperDashboard: React.FC = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
 
-  const filteredRequests = requests.filter(request => {
-    const matchesFilter = filter === 'all' || request.status === filter;
-    const matchesSearch = searchTerm === '' || 
-      request.wasteType.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      request.address.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (request.description && request.description.toLowerCase().includes(searchTerm.toLowerCase()));
-    
-    return matchesFilter && matchesSearch;
-  });
+  // OPTIMIZATION: Memoize filtered requests to prevent unnecessary re-renders
+  const filteredRequests = useMemo(() => {
+    return requests.filter(request => {
+      const matchesFilter = filter === 'all' || request.status === filter;
+      const matchesSearch = searchTerm === '' || 
+        request.wasteType.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        request.address.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (request.description && request.description.toLowerCase().includes(searchTerm.toLowerCase()));
+      
+      return matchesFilter && matchesSearch;
+    });
+  }, [requests, filter, searchTerm]);
+
+  // OPTIMIZATION: Memoize stats calculations
+  const stats = useMemo(() => {
+    const activeRequests = requests.filter(r => ['pending', 'matched', 'in_progress'].includes(r.status)).length;
+    const completedRequests = requests.filter(r => r.status === 'completed').length;
+    return { activeRequests, completedRequests };
+  }, [requests]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -312,7 +322,7 @@ export const DumperDashboard: React.FC = () => {
               <div>
                 <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-1">Active Requests</h3>
                 <p className="text-xl sm:text-2xl font-bold text-green-600">
-                  {requests.filter(r => ['pending', 'matched', 'in_progress'].includes(r.status)).length}
+                  {stats.activeRequests}
                 </p>
               </div>
               <Clock className="h-6 w-6 sm:h-8 sm:w-8 text-gray-400" />
@@ -324,7 +334,7 @@ export const DumperDashboard: React.FC = () => {
               <div>
                 <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-1">Completed</h3>
                 <p className="text-xl sm:text-2xl font-bold text-blue-600">
-                  {requests.filter(r => r.status === 'completed').length}
+                  {stats.completedRequests}
                 </p>
               </div>
               <Trash2 className="h-6 w-6 sm:h-8 sm:w-8 text-gray-400" />
@@ -394,7 +404,6 @@ export const DumperDashboard: React.FC = () => {
               <div className="space-y-4">
                 {filteredRequests.map((request) => (
                   <div key={request.id} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
-                
                     <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between">
                       <div className="flex-1">
                         <div className="flex flex-col sm:flex-row sm:items-center space-y-2 sm:space-y-0 sm:space-x-3 mb-2">
