@@ -17,6 +17,8 @@ export const CollectorDashboard: React.FC = () => {
   const [locationError, setLocationError] = useState<string | null>(null);
   const [creatingProfile, setCreatingProfile] = useState(false);
   const [locationLoading, setLocationLoading] = useState(false);
+  const [locationAccuracy, setLocationAccuracy] = useState<number | null>(null);
+  const [locationAttempts, setLocationAttempts] = useState(0);
 
   // Filter requests for collector view - only show pending requests within 4km from dumpers
   const availableRequests = requests.filter(r => {
@@ -80,10 +82,11 @@ export const CollectorDashboard: React.FC = () => {
     autoCreateCollectorProfile();
   }, [user, myCollectorProfile, collectorsLoading, createCollectorProfile, creatingProfile]);
 
-  // Enhanced geolocation function with better mobile support
+  // Enhanced geolocation function with better mobile support and precision
   const getCurrentLocation = useCallback(() => {
     setLocationLoading(true);
     setLocationError(null);
+    setLocationAttempts(prev => prev + 1);
 
     if (!navigator.geolocation) {
       setLocationError('Geolocation is not supported by this browser.');
@@ -91,22 +94,50 @@ export const CollectorDashboard: React.FC = () => {
       return;
     }
 
-    // Enhanced options for mobile devices
-    const options = {
-      enableHighAccuracy: true,
-      timeout: 15000, // Increased timeout for mobile
-      maximumAge: 300000 // 5 minutes cache
-    };
+    // ENHANCED: Progressive location accuracy attempts
+    const attempts = [
+      // Attempt 1: High accuracy with reasonable timeout
+      {
+        enableHighAccuracy: true,
+        timeout: 15000,
+        maximumAge: 60000, // 1 minute cache
+      },
+      // Attempt 2: High accuracy with longer timeout
+      {
+        enableHighAccuracy: true,
+        timeout: 30000,
+        maximumAge: 30000, // 30 seconds cache
+      },
+      // Attempt 3: Maximum precision, no cache
+      {
+        enableHighAccuracy: true,
+        timeout: 45000,
+        maximumAge: 0, // No cache - force fresh location
+      }
+    ];
+
+    const currentAttempt = Math.min(locationAttempts, attempts.length) - 1;
+    const options = attempts[currentAttempt] || attempts[attempts.length - 1];
+
+    console.log(`Collector location attempt ${locationAttempts} with options:`, options);
 
     const successCallback = (position: GeolocationPosition) => {
       try {
+        const { latitude, longitude, accuracy } = position.coords;
+        
         const location = {
-          lat: position.coords.latitude,
-          lng: position.coords.longitude,
+          lat: latitude,
+          lng: longitude,
         };
         
-        console.log('Location obtained:', location);
+        console.log('Collector location obtained:', {
+          ...location,
+          accuracy,
+          timestamp: position.timestamp
+        });
+        
         setCurrentLocation(location);
+        setLocationAccuracy(accuracy);
         setLocationError(null);
         
         // Update location in database if collector profile exists
@@ -125,32 +156,42 @@ export const CollectorDashboard: React.FC = () => {
     };
 
     const errorCallback = (error: GeolocationPositionError) => {
-      console.error('Geolocation error:', error);
-      setLocationLoading(false);
+      console.error('Collector geolocation error:', error);
       
-      let errorMessage = 'Unable to get your location. ';
+      let errorMessage = 'Unable to get your precise location. ';
       
       switch (error.code) {
         case error.PERMISSION_DENIED:
           errorMessage += 'Please allow location access in your browser settings and refresh the page.';
           break;
         case error.POSITION_UNAVAILABLE:
-          errorMessage += 'Location information is unavailable. Please check your device settings.';
+          errorMessage += 'Location information is unavailable. Please check your device settings and ensure you have a good GPS signal.';
           break;
         case error.TIMEOUT:
-          errorMessage += 'Location request timed out. Please try again.';
+          errorMessage += `Location request timed out. ${locationAttempts < 3 ? 'Trying again with different settings...' : 'Please try again.'}`;
           break;
         default:
           errorMessage += 'Please enable location services and try again.';
           break;
       }
       
+      // If this was a timeout and we haven't tried all attempts, try again automatically
+      if (error.code === error.TIMEOUT && locationAttempts < 3) {
+        console.log('Retrying collector location with more aggressive settings...');
+        setLocationLoading(false);
+        setTimeout(() => {
+          getCurrentLocation();
+        }, 1000);
+        return;
+      }
+      
       setLocationError(errorMessage);
+      setLocationLoading(false);
     };
 
     // Use the enhanced geolocation call
     navigator.geolocation.getCurrentPosition(successCallback, errorCallback, options);
-  }, [myCollectorProfile, updateLocation]);
+  }, [myCollectorProfile, updateLocation, locationAttempts]);
 
   // Get current location on component mount with better error handling
   useEffect(() => {
@@ -218,6 +259,7 @@ export const CollectorDashboard: React.FC = () => {
   };
 
   const refreshLocation = () => {
+    setLocationAttempts(0); // Reset attempts for fresh start
     getCurrentLocation();
   };
 
@@ -251,6 +293,35 @@ export const CollectorDashboard: React.FC = () => {
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
     const distance = R * c; // Distance in kilometers
     return distance;
+  };
+
+  const getLocationStatusMessage = () => {
+    if (locationLoading) {
+      return `Getting precise location... (Attempt ${locationAttempts}/3)`;
+    }
+    if (currentLocation && locationAccuracy !== null) {
+      if (locationAccuracy <= 10) {
+        return `High precision location (±${Math.round(locationAccuracy)}m accuracy) - showing requests within 4km`;
+      } else if (locationAccuracy <= 50) {
+        return `Good location accuracy (±${Math.round(locationAccuracy)}m accuracy) - showing requests within 4km`;
+      } else {
+        return `Location found but accuracy is low (±${Math.round(locationAccuracy)}m). Consider refreshing for better accuracy.`;
+      }
+    }
+    if (currentLocation) {
+      return 'Location active - showing requests within 4km radius';
+    }
+    return null;
+  };
+
+  const getLocationButtonText = () => {
+    if (locationLoading) {
+      return `Getting location... (${locationAttempts}/3)`;
+    }
+    if (currentLocation && locationAccuracy !== null && locationAccuracy > 50) {
+      return 'Improve accuracy';
+    }
+    return locationAttempts > 0 ? 'Refresh location' : 'Enable location';
   };
 
   if (collectorsLoading || creatingProfile) {
@@ -442,24 +513,24 @@ export const CollectorDashboard: React.FC = () => {
           </div>
         )}
 
-        {/* Location Status */}
+        {/* Enhanced Location Status */}
         {locationError ? (
           <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
             <div className="flex items-center justify-between">
               <div className="flex items-center">
                 <AlertCircle className="h-5 w-5 text-yellow-500 mr-2" />
                 <div>
-                  <p className="text-yellow-700 text-sm font-medium">Location Required</p>
+                  <p className="text-yellow-700 text-sm font-medium">Location Required for Precise Matching</p>
                   <p className="text-yellow-600 text-sm">{locationError}</p>
                 </div>
               </div>
               <button
                 onClick={refreshLocation}
                 disabled={locationLoading}
-                className="flex items-center text-yellow-700 hover:text-yellow-800 font-medium text-sm disabled:opacity-50"
+                className="flex items-center text-yellow-700 hover:text-yellow-800 font-medium text-sm disabled:opacity-50 bg-yellow-100 hover:bg-yellow-200 px-3 py-2 rounded-lg transition-colors"
               >
                 <RefreshCw className={`h-4 w-4 mr-1 ${locationLoading ? 'animate-spin' : ''}`} />
-                {locationLoading ? 'Getting...' : 'Retry'}
+                {getLocationButtonText()}
               </button>
             </div>
           </div>
@@ -468,17 +539,18 @@ export const CollectorDashboard: React.FC = () => {
             <div className="flex items-center justify-between">
               <div className="flex items-center">
                 <MapPin className="h-5 w-5 text-green-500 mr-2" />
-                <p className="text-green-700 text-sm">
-                  Location active - showing requests within 4km radius
-                </p>
+                <div>
+                  <p className="text-green-700 text-sm font-medium">Location Active</p>
+                  <p className="text-green-600 text-sm">{getLocationStatusMessage()}</p>
+                </div>
               </div>
               <button
                 onClick={refreshLocation}
                 disabled={locationLoading}
-                className="flex items-center text-green-700 hover:text-green-800 font-medium text-sm disabled:opacity-50"
+                className="flex items-center text-green-700 hover:text-green-800 font-medium text-sm disabled:opacity-50 bg-green-100 hover:bg-green-200 px-3 py-2 rounded-lg transition-colors"
               >
                 <RefreshCw className={`h-4 w-4 mr-1 ${locationLoading ? 'animate-spin' : ''}`} />
-                {locationLoading ? 'Updating...' : 'Refresh'}
+                {getLocationButtonText()}
               </button>
             </div>
           </div>
@@ -486,7 +558,7 @@ export const CollectorDashboard: React.FC = () => {
           <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
             <div className="flex items-center">
               <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-500 mr-2"></div>
-              <p className="text-blue-700 text-sm">Getting your location...</p>
+              <p className="text-blue-700 text-sm">{getLocationStatusMessage()}</p>
             </div>
           </div>
         ) : (
@@ -494,17 +566,18 @@ export const CollectorDashboard: React.FC = () => {
             <div className="flex items-center justify-between">
               <div className="flex items-center">
                 <MapPin className="h-5 w-5 text-gray-500 mr-2" />
-                <p className="text-gray-700 text-sm">
-                  Location needed to show nearby requests
-                </p>
+                <div>
+                  <p className="text-gray-700 text-sm font-medium">Location needed for precise matching</p>
+                  <p className="text-gray-600 text-sm">Enable location to see nearby collection requests</p>
+                </div>
               </div>
               <button
                 onClick={refreshLocation}
                 disabled={locationLoading}
-                className="flex items-center text-gray-700 hover:text-gray-800 font-medium text-sm disabled:opacity-50"
+                className="flex items-center text-gray-700 hover:text-gray-800 font-medium text-sm disabled:opacity-50 bg-gray-100 hover:bg-gray-200 px-3 py-2 rounded-lg transition-colors"
               >
                 <MapPin className="h-4 w-4 mr-1" />
-                Enable Location
+                {getLocationButtonText()}
               </button>
             </div>
           </div>
