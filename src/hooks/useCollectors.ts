@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import type { Collector } from '../types';
@@ -10,7 +10,7 @@ export const useCollectors = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const ensureUserProfileExists = async () => {
+  const ensureUserProfileExists = useCallback(async () => {
     if (!user) return false;
 
     try {
@@ -54,11 +54,10 @@ export const useCollectors = () => {
       console.error('Error ensuring profile exists:', err);
       throw err;
     }
-  };
+  }, [user]);
 
-  const fetchCollectors = async () => {
+  const fetchCollectors = useCallback(async () => {
     try {
-      setLoading(true);
       setError(null);
 
       const { data, error: fetchError } = await supabase
@@ -86,14 +85,11 @@ export const useCollectors = () => {
     } catch (err: any) {
       console.error('Error fetching collectors:', err);
       setError(err.message);
-    } finally {
-      setLoading(false);
     }
-  };
+  }, []);
 
-  const fetchMyCollectorProfile = async () => {
+  const fetchMyCollectorProfile = useCallback(async () => {
     if (!user || user.userType !== 'collector') {
-      setLoading(false);
       return;
     }
 
@@ -157,9 +153,9 @@ export const useCollectors = () => {
       setError(err.message);
       setMyCollectorProfile(null);
     }
-  };
+  }, [user]);
 
-  const createCollectorProfile = async (profileData: {
+  const createCollectorProfile = useCallback(async (profileData: {
     specializations: string[];
     serviceRadius: number;
     vehicleType?: string;
@@ -233,9 +229,9 @@ export const useCollectors = () => {
       setError(err.message);
       throw err;
     }
-  };
+  }, [user, ensureUserProfileExists]);
 
-  const updateAvailability = async (isAvailable: boolean) => {
+  const updateAvailability = useCallback(async (isAvailable: boolean) => {
     if (!myCollectorProfile) throw new Error('No collector profile found');
 
     try {
@@ -257,9 +253,9 @@ export const useCollectors = () => {
       setError(err.message);
       throw err;
     }
-  };
+  }, [myCollectorProfile]);
 
-  const updateLocation = async (location: { lat: number; lng: number }) => {
+  const updateLocation = useCallback(async (location: { lat: number; lng: number }) => {
     if (!myCollectorProfile) throw new Error('No collector profile found');
 
     try {
@@ -281,7 +277,7 @@ export const useCollectors = () => {
       // Don't set error state for location updates as they're not critical
       console.warn('Location update failed, continuing without error');
     }
-  };
+  }, [myCollectorProfile]);
 
   useEffect(() => {
     const initializeCollectors = async () => {
@@ -309,7 +305,7 @@ export const useCollectors = () => {
     } else {
       setLoading(false);
     }
-  }, [user]);
+  }, [user, fetchCollectors, fetchMyCollectorProfile]);
 
   return {
     collectors,
