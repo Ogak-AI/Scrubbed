@@ -433,7 +433,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         if (!mounted) return;
 
         // Clean up OAuth hash from URL if present
-        if (window.location.hash && window.location.hash.includes('access_token')) {
+        if (typeof window !== 'undefined' && window.location.hash && window.location.hash.includes('access_token')) {
           console.log('Cleaning up OAuth hash from URL');
           window.history.replaceState({}, document.title, window.location.pathname);
         }
@@ -488,7 +488,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       }
       
       // Clean up URL hash on any auth state change
-      if (window.location.hash && window.location.hash.includes('access_token')) {
+      if (typeof window !== 'undefined' && window.location.hash && window.location.hash.includes('access_token')) {
         console.log('Cleaning up OAuth hash after auth state change');
         window.history.replaceState({}, document.title, window.location.pathname);
       }

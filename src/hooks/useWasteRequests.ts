@@ -28,7 +28,7 @@ export const useWasteRequests = () => {
       console.log('Checking if profile exists for user:', user.id);
       
       // First, check if profile exists
-      const { data: existingProfile, error: checkError } = await supabase
+      const { data, error: checkError } = await supabase
         .from('profiles')
         .select('id, email, user_type')
         .eq('id', user.id)
@@ -68,7 +68,7 @@ export const useWasteRequests = () => {
         console.error('Error checking profile:', checkError);
         throw new Error(`Database error: ${checkError.message}`);
       } else {
-        console.log('Profile already exists:', existingProfile);
+        console.log('Profile already exists:', data);
         return true;
       }
     } catch (err: unknown) {
@@ -121,24 +121,24 @@ export const useWasteRequests = () => {
         return data;
       })();
 
-      const data = await Promise.race([fetchPromise, timeoutPromise]) as unknown[];
+      const data = await Promise.race([fetchPromise, timeoutPromise]) as Array<Record<string, unknown>>;
 
       console.log('Fetched requests:', data);
 
       const formattedRequests: WasteRequest[] = (data || []).map(request => ({
-        id: request.id,
-        dumperId: request.dumper_id,
-        collectorId: request.collector_id,
-        wasteType: request.waste_type,
-        description: request.description,
+        id: request.id as string,
+        dumperId: request.dumper_id as string,
+        collectorId: request.collector_id as string | null,
+        wasteType: request.waste_type as string,
+        description: request.description as string | null,
         location: request.location as { lat: number; lng: number },
-        address: request.address,
+        address: request.address as string,
         status: request.status as WasteRequest['status'],
-        scheduledTime: request.scheduled_time,
-        estimatedAmount: request.estimated_amount,
-        photos: request.photos,
-        createdAt: request.created_at,
-        updatedAt: request.updated_at,
+        scheduledTime: request.scheduled_time as string | null,
+        estimatedAmount: request.estimated_amount as string | null,
+        photos: request.photos as string[] | null,
+        createdAt: request.created_at as string,
+        updatedAt: request.updated_at as string,
       }));
 
       setRequests(formattedRequests);
@@ -336,7 +336,7 @@ export const useWasteRequests = () => {
   useEffect(() => {
     if (!user) return;
 
-    let channel: unknown = null;
+    let channel: ReturnType<typeof createSafeRealtimeSubscription> = null;
     let retryCount = 0;
     const maxRetries = 2;
 
