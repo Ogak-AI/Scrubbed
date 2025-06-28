@@ -3,6 +3,16 @@ import { supabase, createSafeRealtimeSubscription } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import type { WasteRequest } from '../types';
 
+interface CreateRequestData {
+  wasteType: string;
+  description?: string;
+  location: { lat: number; lng: number };
+  address: string;
+  scheduledTime?: string;
+  estimatedAmount?: string;
+  photos?: string[];
+}
+
 export const useWasteRequests = () => {
   const { user } = useAuth();
   const [requests, setRequests] = useState<WasteRequest[]>([]);
@@ -111,7 +121,7 @@ export const useWasteRequests = () => {
         return data;
       })();
 
-      const data = await Promise.race([fetchPromise, timeoutPromise]) as any[];
+      const data = await Promise.race([fetchPromise, timeoutPromise]) as unknown[];
 
       console.log('Fetched requests:', data);
 
@@ -144,7 +154,7 @@ export const useWasteRequests = () => {
     }
   }, [user, ensureUserProfileExists]);
 
-  const createRequest = async (requestData: unknown) => {
+  const createRequest = async (requestData: CreateRequestData) => {
     if (!user) {
       throw new Error('User not authenticated');
     }
@@ -172,25 +182,15 @@ export const useWasteRequests = () => {
 
       console.log('Profile verified:', profileCheck);
 
-      const typedRequestData = requestData as {
-        wasteType: string;
-        description?: string;
-        location: { lat: number; lng: number };
-        address: string;
-        scheduledTime?: string;
-        estimatedAmount?: string;
-        photos?: string[];
-      };
-
       const insertData = {
         dumper_id: user.id,
-        waste_type: typedRequestData.wasteType,
-        description: typedRequestData.description || null,
-        location: typedRequestData.location,
-        address: typedRequestData.address,
-        scheduled_time: typedRequestData.scheduledTime || null,
-        estimated_amount: typedRequestData.estimatedAmount || null,
-        photos: typedRequestData.photos || null,
+        waste_type: requestData.wasteType,
+        description: requestData.description || null,
+        location: requestData.location,
+        address: requestData.address,
+        scheduled_time: requestData.scheduledTime || null,
+        estimated_amount: requestData.estimatedAmount || null,
+        photos: requestData.photos || null,
         status: 'pending',
       };
 
@@ -336,7 +336,7 @@ export const useWasteRequests = () => {
   useEffect(() => {
     if (!user) return;
 
-    let channel: any = null;
+    let channel: unknown = null;
     let retryCount = 0;
     const maxRetries = 2;
 
@@ -349,15 +349,18 @@ export const useWasteRequests = () => {
         (payload) => {
           console.log('Real-time update:', payload);
           // Only refetch if the change is relevant to this user
-          if (payload.new && (
-            payload.new.dumper_id === user.id || 
-            payload.new.collector_id === user.id ||
-            payload.new.status === 'pending'
-          )) {
-            // Debounce refetch to avoid too many calls
-            setTimeout(() => {
-              fetchRequests();
-            }, 1000);
+          if (payload && typeof payload === 'object' && 'new' in payload) {
+            const newData = payload.new as { dumper_id?: string; collector_id?: string; status?: string };
+            if (newData && (
+              newData.dumper_id === user.id || 
+              newData.collector_id === user.id ||
+              newData.status === 'pending'
+            )) {
+              // Debounce refetch to avoid too many calls
+              setTimeout(() => {
+                fetchRequests();
+              }, 1000);
+            }
           }
         }
       );
@@ -384,8 +387,8 @@ export const useWasteRequests = () => {
 
     return () => {
       if (subscription) {
-        if (typeof subscription.unsubscribe === 'function') {
-          subscription.unsubscribe();
+        if (typeof subscription === 'object' && subscription !== null && 'unsubscribe' in subscription) {
+          (subscription as { unsubscribe: () => void }).unsubscribe();
         } else if (typeof subscription === 'function') {
           subscription(); // It's a cleanup function
         } else {

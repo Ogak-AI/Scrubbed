@@ -3,19 +3,36 @@ import { ArrowLeft, MapPin, Calendar, Package, AlertCircle, CheckCircle, Refresh
 import { WASTE_TYPES } from '../../types';
 import { supabase } from '../../lib/supabase';
 
+interface RequestFormData {
+  wasteType: string;
+  description: string;
+  address: string;
+  estimatedAmount: string;
+  scheduledTime: string;
+  photos: string[];
+}
+
 interface RequestFormProps {
   onClose: () => void;
-  onSubmit: (requestData: unknown) => void;
+  onSubmit: (requestData: {
+    wasteType: string;
+    description?: string;
+    location: { lat: number; lng: number };
+    address: string;
+    scheduledTime?: string;
+    estimatedAmount?: string;
+    photos?: string[];
+  }) => void;
 }
 
 export const RequestForm: React.FC<RequestFormProps> = ({ onClose, onSubmit }) => {
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<RequestFormData>({
     wasteType: '',
     description: '',
     address: '',
     estimatedAmount: '',
     scheduledTime: '',
-    photos: [] as string[],
+    photos: [],
   });
   const [loading, setLoading] = useState(false);
   const [locationLoading, setLocationLoading] = useState(false);
@@ -295,7 +312,7 @@ export const RequestForm: React.FC<RequestFormProps> = ({ onClose, onSubmit }) =
     }
   };
 
-  const handleInputChange = (field: string, value: string) => {
+  const handleInputChange = (field: keyof RequestFormData, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
     
     // Clear validation error for this field when user starts typing

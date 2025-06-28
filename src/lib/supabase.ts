@@ -72,7 +72,7 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
     // Enhanced error handling for development
     ...(import.meta.env.DEV && {
       transport: 'websocket',
-      logger: (kind: string, msg: string, data?: any) => {
+      logger: (kind: string, msg: string, data?: unknown) => {
         if (kind === 'error') {
           console.warn('Realtime error (non-critical):', msg, data);
         }
@@ -167,7 +167,7 @@ export const isRealtimeAvailable = () => {
 // Helper function to safely create realtime subscriptions
 export const createSafeRealtimeSubscription = (
   table: string,
-  callback: (payload: any) => void,
+  callback: (payload: unknown) => void,
   options: { event?: string; filter?: string } = {}
 ) => {
   if (!isRealtimeAvailable()) {
