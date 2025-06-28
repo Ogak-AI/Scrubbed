@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowLeft, MapPin, Clock, Package, User, Phone, Mail, Star, MessageSquare, Calendar, Trash2, AlertTriangle, X } from 'lucide-react';
+import { ArrowLeft, MapPin, Clock, Package, User, Phone, Mail, Star, MessageSquare, Calendar, Trash2, AlertTriangle, X, DollarSign } from 'lucide-react';
 import { useWasteRequests } from '../../hooks/useWasteRequests';
 import type { WasteRequest } from '../../types';
 
@@ -53,6 +53,14 @@ export const RequestDetails: React.FC<RequestDetailsProps> = ({ request, onClose
       hour: '2-digit',
       minute: '2-digit',
     });
+  };
+
+  const formatPrice = (price: number | null) => {
+    if (price === null || price === undefined) return null;
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+    }).format(price);
   };
 
   const getStatusDescription = (status: string) => {
@@ -246,6 +254,16 @@ export const RequestDetails: React.FC<RequestDetailsProps> = ({ request, onClose
                   </div>
                 )}
 
+                {request.price && (
+                  <div className="flex items-start">
+                    <DollarSign className="h-5 w-5 text-gray-400 mr-3 mt-0.5 flex-shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium text-gray-900 text-sm sm:text-base">Offered Price</p>
+                      <p className="text-gray-600 text-sm sm:text-base">{formatPrice(request.price)}</p>
+                    </div>
+                  </div>
+                )}
+
                 <div className="flex items-start">
                   <MapPin className="h-5 w-5 text-gray-400 mr-3 mt-0.5 flex-shrink-0" />
                   <div className="min-w-0 flex-1">
@@ -414,6 +432,14 @@ export const RequestDetails: React.FC<RequestDetailsProps> = ({ request, onClose
                     <span className="text-gray-600">Scheduled:</span>
                     <span className="font-medium text-gray-900 text-right">
                       {new Date(request.scheduledTime).toLocaleDateString()}
+                    </span>
+                  </div>
+                )}
+                {request.price && (
+                  <div className="flex justify-between items-start">
+                    <span className="text-gray-600">Offered Price:</span>
+                    <span className="font-medium text-gray-900 text-right">
+                      {formatPrice(request.price)}
                     </span>
                   </div>
                 )}

@@ -41,6 +41,7 @@ export interface WasteRequest {
   status: 'pending' | 'matched' | 'in_progress' | 'completed' | 'cancelled';
   scheduledTime: string | null;
   estimatedAmount: string | null;
+  price: number | null;
   photos: string[] | null;
   createdAt: string;
   updatedAt: string;

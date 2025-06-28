@@ -10,6 +10,7 @@ interface CreateRequestData {
   address: string;
   scheduledTime?: string;
   estimatedAmount?: string;
+  price?: number;
   photos?: string[];
 }
 
@@ -114,6 +115,7 @@ export const useWasteRequests = () => {
             status,
             scheduled_time,
             estimated_amount,
+            price,
             photos,
             created_at,
             updated_at
@@ -155,6 +157,7 @@ export const useWasteRequests = () => {
         status: request.status as WasteRequest['status'],
         scheduledTime: request.scheduled_time as string | null,
         estimatedAmount: request.estimated_amount as string | null,
+        price: request.price as number | null,
         photos: request.photos as string[] | null,
         createdAt: request.created_at as string,
         updatedAt: request.updated_at as string,
@@ -209,6 +212,7 @@ export const useWasteRequests = () => {
         address: requestData.address,
         scheduled_time: requestData.scheduledTime || null,
         estimated_amount: requestData.estimatedAmount || null,
+        price: requestData.price || null,
         photos: requestData.photos || null,
         status: 'pending',
       };
@@ -258,6 +262,7 @@ export const useWasteRequests = () => {
         status: data.status as WasteRequest['status'],
         scheduledTime: data.scheduled_time,
         estimatedAmount: data.estimated_amount,
+        price: data.price,
         photos: data.photos,
         createdAt: data.created_at,
         updatedAt: data.updated_at,
@@ -411,10 +416,7 @@ export const useWasteRequests = () => {
           }
         }, 30000);
 
-        return () => {
-          clearInterval(pollInterval);
-          if (debounceTimer) clearTimeout(debounceTimer);
-        };
+        return () => clearInterval(pollInterval);
       }
 
       return channel;

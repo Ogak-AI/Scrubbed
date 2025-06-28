@@ -97,6 +97,7 @@ export interface Database {
           status: 'pending' | 'matched' | 'in_progress' | 'completed' | 'cancelled'
           scheduled_time: string | null
           estimated_amount: string | null
+          price: number | null
           photos: string[] | null
           created_at: string
           updated_at: string
@@ -112,6 +113,7 @@ export interface Database {
           status?: 'pending' | 'matched' | 'in_progress' | 'completed' | 'cancelled'
           scheduled_time?: string | null
           estimated_amount?: string | null
+          price?: number | null
           photos?: string[] | null
           created_at?: string
           updated_at?: string
@@ -127,6 +129,7 @@ export interface Database {
           status?: 'pending' | 'matched' | 'in_progress' | 'completed' | 'cancelled'
           scheduled_time?: string | null
           estimated_amount?: string | null
+          price?: number | null
           photos?: string[] | null
           created_at?: string
           updated_at?: string

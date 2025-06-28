@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ArrowLeft, MapPin, Calendar, Package, AlertCircle, CheckCircle, RefreshCw, Upload, X, Navigation } from 'lucide-react';
+import { ArrowLeft, MapPin, Calendar, Package, AlertCircle, CheckCircle, RefreshCw, Upload, X, Navigation, DollarSign } from 'lucide-react';
 import { WASTE_TYPES } from '../../types';
 import { supabase } from '../../lib/supabase';
 
@@ -8,6 +8,7 @@ interface RequestFormData {
   description: string;
   address: string;
   estimatedAmount: string;
+  price: string;
   scheduledTime: string;
   photos: string[];
 }
@@ -21,6 +22,7 @@ interface RequestFormProps {
     address: string;
     scheduledTime?: string;
     estimatedAmount?: string;
+    price?: number;
     photos?: string[];
   }) => void;
 }
@@ -31,6 +33,7 @@ export const RequestForm: React.FC<RequestFormProps> = ({ onClose, onSubmit }) =
     description: '',
     address: '',
     estimatedAmount: '',
+    price: '',
     scheduledTime: '',
     photos: [],
   });
@@ -53,6 +56,14 @@ export const RequestForm: React.FC<RequestFormProps> = ({ onClose, onSubmit }) =
     
     if (!formData.address.trim()) {
       errors.address = 'Please enter a pickup address';
+    }
+
+    if (formData.price && isNaN(parseFloat(formData.price))) {
+      errors.price = 'Please enter a valid price';
+    }
+
+    if (formData.price && parseFloat(formData.price) < 0) {
+      errors.price = 'Price cannot be negative';
     }
     
     setValidationErrors(errors);
@@ -161,6 +172,7 @@ export const RequestForm: React.FC<RequestFormProps> = ({ onClose, onSubmit }) =
         address: formData.address,
         scheduledTime: formData.scheduledTime || undefined,
         estimatedAmount: formData.estimatedAmount || undefined,
+        price: formData.price ? parseFloat(formData.price) : undefined,
         photos: formData.photos.length > 0 ? formData.photos : undefined,
       };
 
@@ -598,6 +610,36 @@ export const RequestForm: React.FC<RequestFormProps> = ({ onClose, onSubmit }) =
                   placeholder="e.g., 2-3 bags, 1 box, etc."
                 />
               </div>
+            </div>
+
+            {/* Price */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Offered Price (Optional)
+              </label>
+              <div className="relative">
+                <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={formData.price}
+                  onChange={(e) => handleInputChange('price', e.target.value)}
+                  className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm sm:text-base ${
+                    validationErrors.price ? 'border-red-300 bg-red-50' : 'border-gray-300'
+                  }`}
+                  placeholder="0.00"
+                />
+              </div>
+              {validationErrors.price && (
+                <p className="mt-1 text-sm text-red-600 flex items-center">
+                  <AlertCircle className="h-4 w-4 mr-1" />
+                  {validationErrors.price}
+                </p>
+              )}
+              <p className="mt-1 text-xs text-gray-500">
+                Offer a price to attract collectors. Leave empty for collectors to quote.
+              </p>
             </div>
 
             {/* Scheduled Time */}
