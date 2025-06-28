@@ -92,18 +92,44 @@ export const useCollectors = () => {
   };
 
   const fetchMyCollectorProfile = async () => {
-    if (!user || user.userType !== 'collector') return;
+    if (!user || user.userType !== 'collector') {
+      setLoading(false);
+      return;
+    }
 
     try {
+      setError(null);
+      console.log('Fetching collector profile for user:', user.id);
+
+      // Use a more specific query to avoid 406 errors
       const { data, error } = await supabase
         .from('collectors')
-        .select('*')
+        .select(`
+          id,
+          profile_id,
+          specializations,
+          service_radius,
+          is_available,
+          current_location,
+          rating,
+          total_collections,
+          created_at,
+          updated_at
+        `)
         .eq('profile_id', user.id)
-        .single();
+        .maybeSingle(); // Use maybeSingle() instead of single() to handle no results gracefully
 
-      if (error && error.code !== 'PGRST116') {
+      if (error) {
         console.error('Error fetching collector profile:', error);
-        return;
+        
+        // If it's a 406 error or similar, it might be due to RLS policies
+        if (error.code === 'PGRST301' || error.message.includes('406')) {
+          console.log('Possible RLS policy issue, collector profile may not exist yet');
+          setMyCollectorProfile(null);
+          return;
+        }
+        
+        throw error;
       }
 
       if (data) {
@@ -120,10 +146,16 @@ export const useCollectors = () => {
           updatedAt: data.updated_at,
         };
 
+        console.log('Collector profile found:', collectorProfile);
         setMyCollectorProfile(collectorProfile);
+      } else {
+        console.log('No collector profile found for user:', user.id);
+        setMyCollectorProfile(null);
       }
     } catch (err: any) {
       console.error('Error fetching my collector profile:', err);
+      setError(err.message);
+      setMyCollectorProfile(null);
     }
   };
 
@@ -138,22 +170,42 @@ export const useCollectors = () => {
     }
 
     try {
+      setError(null);
+      console.log('Creating collector profile for user:', user.id);
+
       // Ensure user profile exists first
       await ensureUserProfileExists();
 
+      const insertData = {
+        profile_id: user.id,
+        specializations: profileData.specializations,
+        service_radius: profileData.serviceRadius,
+        is_available: true,
+        total_collections: 0,
+      };
+
+      console.log('Inserting collector profile with data:', insertData);
+
       const { data, error } = await supabase
         .from('collectors')
-        .insert({
-          profile_id: user.id,
-          specializations: profileData.specializations,
-          service_radius: profileData.serviceRadius,
-          is_available: true,
-          total_collections: 0,
-        })
-        .select()
+        .insert(insertData)
+        .select(`
+          id,
+          profile_id,
+          specializations,
+          service_radius,
+          is_available,
+          current_location,
+          rating,
+          total_collections,
+          created_at,
+          updated_at
+        `)
         .single();
 
       if (error) {
+        console.error('Error creating collector profile:', error);
+        
         if (error.code === '23503') {
           throw new Error('Your user profile is not properly set up. Please try signing out and signing in again.');
         }
@@ -173,10 +225,12 @@ export const useCollectors = () => {
         updatedAt: data.updated_at,
       };
 
+      console.log('Collector profile created successfully:', newCollectorProfile);
       setMyCollectorProfile(newCollectorProfile);
       return newCollectorProfile;
     } catch (err: any) {
       console.error('Error creating collector profile:', err);
+      setError(err.message);
       throw err;
     }
   };
@@ -185,6 +239,8 @@ export const useCollectors = () => {
     if (!myCollectorProfile) throw new Error('No collector profile found');
 
     try {
+      setError(null);
+      
       const { error } = await supabase
         .from('collectors')
         .update({
@@ -198,6 +254,7 @@ export const useCollectors = () => {
       setMyCollectorProfile(prev => prev ? { ...prev, isAvailable } : null);
     } catch (err: any) {
       console.error('Error updating availability:', err);
+      setError(err.message);
       throw err;
     }
   };
@@ -206,6 +263,8 @@ export const useCollectors = () => {
     if (!myCollectorProfile) throw new Error('No collector profile found');
 
     try {
+      setError(null);
+      
       const { error } = await supabase
         .from('collectors')
         .update({
@@ -219,14 +278,36 @@ export const useCollectors = () => {
       setMyCollectorProfile(prev => prev ? { ...prev, currentLocation: location } : null);
     } catch (err: any) {
       console.error('Error updating location:', err);
-      throw err;
+      // Don't set error state for location updates as they're not critical
+      console.warn('Location update failed, continuing without error');
     }
   };
 
   useEffect(() => {
-    fetchCollectors();
-    if (user?.userType === 'collector') {
-      fetchMyCollectorProfile();
+    const initializeCollectors = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+
+        // Always fetch available collectors
+        await fetchCollectors();
+
+        // Only fetch collector profile if user is a collector
+        if (user?.userType === 'collector') {
+          await fetchMyCollectorProfile();
+        }
+      } catch (err: any) {
+        console.error('Error initializing collectors:', err);
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (user) {
+      initializeCollectors();
+    } else {
+      setLoading(false);
     }
   }, [user]);
 
