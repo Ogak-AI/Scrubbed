@@ -1,4 +1,4 @@
-import React, { createContext, useContext, ReactNode } from 'react';
+import React, { createContext, ReactNode } from 'react';
 
 // Define the shape of our app context
 interface AppContextType {
@@ -8,7 +8,7 @@ interface AppContextType {
 }
 
 // Create the context with default values
-const AppContext = createContext<AppContextType | undefined>(undefined);
+export const AppContext = createContext<AppContextType | undefined>(undefined);
 
 // AppProvider component that wraps the app and provides context
 interface AppProviderProps {
@@ -27,13 +27,4 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
       {children}
     </AppContext.Provider>
   );
-};
-
-// Custom hook to use the app context
-export const useAppContext = () => {
-  const context = useContext(AppContext);
-  if (context === undefined) {
-    throw new Error('useAppContext must be used within an AppProvider');
-  }
-  return context;
 };

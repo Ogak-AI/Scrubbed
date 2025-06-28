@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, ReactNode, useCallback } from 'react';
+import React, { createContext, useEffect, useState, ReactNode, useCallback } from 'react';
 import { User as SupabaseUser, Session, PostgrestSingleResponse } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import type { User, VerificationState } from '../types';
@@ -17,7 +17,7 @@ interface AuthContextType {
   verifyPhoneCode: (code: string) => Promise<void>;
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+export const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 interface AuthProviderProps {
   children: ReactNode;
@@ -239,7 +239,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       console.log('Ensuring profile exists for:', supabaseUser.id);
       console.log('User metadata:', supabaseUser.user_metadata);
       
-      const { data, error: checkError } = await supabase
+      const { _data, error: checkError } = await supabase
         .from('profiles')
         .select('id')
         .eq('id', supabaseUser.id)
@@ -433,7 +433,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         if (!mounted) return;
 
         // Clean up OAuth hash from URL if present
-        if (typeof window !== 'undefined' && window.location.hash && window.location.hash.includes('access_token')) {
+        if (window.location.hash && window.location.hash.includes('access_token')) {
           console.log('Cleaning up OAuth hash from URL');
           window.history.replaceState({}, document.title, window.location.pathname);
         }
@@ -488,7 +488,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       }
       
       // Clean up URL hash on any auth state change
-      if (typeof window !== 'undefined' && window.location.hash && window.location.hash.includes('access_token')) {
+      if (window.location.hash && window.location.hash.includes('access_token')) {
         console.log('Cleaning up OAuth hash after auth state change');
         window.history.replaceState({}, document.title, window.location.pathname);
       }
@@ -631,7 +631,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     try {
       console.log('Updating profile with:', updates);
       
-      const { data, error: checkError } = await supabase
+      const { _data, error: checkError } = await supabase
         .from('profiles')
         .select('id')
         .eq('id', user.id)
@@ -793,12 +793,4 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
-};
-
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
 };

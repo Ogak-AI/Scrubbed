@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { MapPin, Clock, Trash2, User, Settings, LogOut, Bell, Star, Navigation, AlertCircle, RefreshCw, Menu, X } from 'lucide-react';
-import { useAuth } from '../../contexts/AuthContext';
+import { useAuth } from '../../hooks/useAuth';
 import { useCollectors } from '../../hooks/useCollectors';
 import { useWasteRequests } from '../../hooks/useWasteRequests';
 import { ProfileSettings } from '../common/ProfileSettings';

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Phone, CheckCircle, AlertCircle, RefreshCw, MessageSquare, User, MapPin } from 'lucide-react';
-import { useAuth } from '../../contexts/AuthContext';
+import { useAuth } from '../../hooks/useAuth';
 
 export const VerificationPage: React.FC = () => {
   const { user, verification, sendPhoneVerification, verifyPhoneCode, updateProfile } = useAuth();

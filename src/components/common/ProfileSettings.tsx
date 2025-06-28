@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ArrowLeft, User, Mail, Phone, MapPin, Save, AlertCircle, CheckCircle, Eye } from 'lucide-react';
-import { useAuth } from '../../contexts/AuthContext';
+import { useAuth } from '../../hooks/useAuth';
 
 interface ProfileSettingsProps {
   onClose: () => void;

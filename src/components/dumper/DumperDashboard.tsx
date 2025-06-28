@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Plus, MapPin, Clock, Trash2, User, Settings, LogOut, Bell, Search, AlertCircle, RefreshCw, Menu, X } from 'lucide-react';
-import { useAuth } from '../../contexts/AuthContext';
+import { useAuth } from '../../hooks/useAuth';
 import { useWasteRequests } from '../../hooks/useWasteRequests';
 import { RequestForm } from './RequestForm';
 import { RequestDetails } from './RequestDetails';
@@ -394,6 +394,7 @@ export const DumperDashboard: React.FC = () => {
               <div className="space-y-4">
                 {filteredRequests.map((request) => (
                   <div key={request.id} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+                
                     <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between">
                       <div className="flex-1">
                         <div className="flex flex-col sm:flex-row sm:items-center space-y-2 sm:space-y-0 sm:space-x-3 mb-2">
