@@ -356,10 +356,6 @@ export const RequestDetails: React.FC<RequestDetailsProps> = ({ request, onClose
                     </p>
                   </div>
                 )}
-                
-                <button className="w-full border border-gray-300 text-gray-700 py-2.5 px-4 rounded-lg font-medium hover:bg-gray-50 transition-colors text-sm">
-                  Share Request
-                </button>
               </div>
             </div>
 
