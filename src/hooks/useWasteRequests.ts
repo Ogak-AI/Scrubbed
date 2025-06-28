@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '../lib/supabase';
+import { supabase, createSafeRealtimeSubscription } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import type { WasteRequest } from '../types';
 
@@ -329,59 +329,66 @@ export const useWasteRequests = () => {
     }
   }, [user, fetchRequests]);
 
-  // Set up real-time subscription with error handling and reduced frequency
+  // IMPROVED: Set up real-time subscription with better error handling
   useEffect(() => {
     if (!user) return;
 
-    let retryCount = 0;
-    const maxRetries = 2; // Reduced retries
     let channel: any = null;
+    let retryCount = 0;
+    const maxRetries = 2;
 
     const setupSubscription = () => {
-      console.log('Setting up real-time subscription');
+      console.log('Setting up safe real-time subscription');
       
-      channel = supabase
-        .channel('waste_requests_changes')
-        .on(
-          'postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'waste_requests',
-          },
-          (payload) => {
-            console.log('Real-time update:', payload);
-            // Only refetch if the change is relevant to this user
-            if (payload.new && (
-              payload.new.dumper_id === user.id || 
-              payload.new.collector_id === user.id ||
-              payload.new.status === 'pending'
-            )) {
-              // Debounce refetch to avoid too many calls
-              setTimeout(() => {
-                fetchRequests();
-              }, 1000);
-            }
+      // Use the safe realtime subscription helper
+      channel = createSafeRealtimeSubscription(
+        'waste_requests',
+        (payload) => {
+          console.log('Real-time update:', payload);
+          // Only refetch if the change is relevant to this user
+          if (payload.new && (
+            payload.new.dumper_id === user.id || 
+            payload.new.collector_id === user.id ||
+            payload.new.status === 'pending'
+          )) {
+            // Debounce refetch to avoid too many calls
+            setTimeout(() => {
+              fetchRequests();
+            }, 1000);
           }
-        )
-        .subscribe((status) => {
-          console.log('Subscription status:', status);
-          if (status === 'SUBSCRIPTION_ERROR' && retryCount < maxRetries) {
-            retryCount++;
-            console.log(`Retrying subscription (${retryCount}/${maxRetries})`);
-            setTimeout(setupSubscription, 2000 * retryCount);
+        }
+      );
+
+      // If subscription failed, try polling as fallback
+      if (!channel && retryCount < maxRetries) {
+        retryCount++;
+        console.log(`Realtime failed, setting up polling fallback (${retryCount}/${maxRetries})`);
+        
+        // Set up polling as fallback (every 30 seconds)
+        const pollInterval = setInterval(() => {
+          if (document.visibilityState === 'visible') {
+            fetchRequests();
           }
-        });
+        }, 30000);
+
+        return () => clearInterval(pollInterval);
+      }
 
       return channel;
     };
 
-    channel = setupSubscription();
+    const subscription = setupSubscription();
 
     return () => {
-      if (channel) {
-        console.log('Cleaning up subscription');
-        supabase.removeChannel(channel);
+      if (subscription) {
+        if (typeof subscription.unsubscribe === 'function') {
+          subscription.unsubscribe();
+        } else if (typeof subscription === 'function') {
+          subscription(); // It's a cleanup function
+        } else {
+          console.log('Cleaning up subscription');
+          supabase.removeChannel(subscription);
+        }
       }
     };
   }, [user, fetchRequests]);
