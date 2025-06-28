@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useEffect, useState, ReactNode, useCallback } from 'react';
 import { User as SupabaseUser, Session, PostgrestSingleResponse } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import type { User, VerificationState } from '../types';
@@ -169,6 +169,235 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
+  // Helper function to get display name from Google user data
+  const getDisplayName = (supabaseUser: SupabaseUser): string => {
+    if (supabaseUser.user_metadata?.full_name) {
+      return supabaseUser.user_metadata.full_name;
+    }
+    
+    if (supabaseUser.user_metadata?.name) {
+      return supabaseUser.user_metadata.name;
+    }
+    
+    const firstName = supabaseUser.user_metadata?.given_name || supabaseUser.user_metadata?.first_name;
+    const lastName = supabaseUser.user_metadata?.family_name || supabaseUser.user_metadata?.last_name;
+    
+    if (firstName && lastName) {
+      return `${firstName} ${lastName}`;
+    }
+    
+    if (firstName) {
+      return firstName;
+    }
+    
+    if (supabaseUser.email) {
+      const emailUsername = supabaseUser.email.split('@')[0];
+      return emailUsername.charAt(0).toUpperCase() + emailUsername.slice(1);
+    }
+    
+    return 'User';
+  };
+
+  const fetchUserProfile = useCallback(async (userId: string) => {
+    try {
+      console.log('Fetching profile for user:', userId);
+      
+      // Use a shorter timeout for profile fetching
+      const profilePromise = supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single();
+
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Profile fetch timeout')), 3000); // Reduced to 3 seconds
+      });
+
+      const { data, error } = await Promise.race([profilePromise, timeoutPromise]) as PostgrestSingleResponse<Database['public']['Tables']['profiles']['Row']>;
+
+      if (error && error.code !== 'PGRST116') {
+        console.error('Error fetching user profile:', error);
+        // Create a basic user object to prevent infinite loading
+        const basicUser = createBasicUser(userId);
+        setUser(basicUser);
+        setLoading(false);
+        setInitialized(true);
+        return;
+      }
+
+      if (data) {
+        console.log('Profile data found:', data);
+        const userData = {
+          id: data.id,
+          email: data.email,
+          fullName: data.full_name,
+          userType: data.user_type,
+          phone: data.phone,
+          address: data.address,
+          emailVerified: data.email_verified || true,
+          phoneVerified: data.phone_verified || false,
+          createdAt: data.created_at,
+          updatedAt: data.updated_at,
+        };
+        
+        console.log('Setting user data:', userData);
+        setUser(userData);
+        
+        // Update verification state based on user data
+        setVerification(prev => ({
+          ...prev,
+          emailVerified: userData.emailVerified,
+          phoneVerified: userData.phoneVerified,
+        }));
+      } else {
+        console.log('No profile found, creating basic user object');
+        const basicUser = createBasicUser(userId);
+        setUser(basicUser);
+        
+        try {
+          await ensureProfileExists(session?.user);
+        } catch (profileError) {
+          console.error('Failed to create profile:', profileError);
+        }
+      }
+    } catch (error: unknown) {
+      console.error('Error fetching user profile:', error);
+      // Fallback user object
+      const fallbackUser = createBasicUser(userId);
+      setUser(fallbackUser);
+    } finally {
+      setLoading(false);
+      setInitialized(true);
+    }
+  }, [session?.user]);
+
+  const createBasicUser = (userId: string): User => {
+    // CRITICAL FIX: Get user type from multiple sources
+    let userType: 'dumper' | 'collector' = 'dumper'; // Default fallback
+    
+    // 1. Check session user metadata
+    if (session?.user?.user_metadata?.user_type) {
+      userType = session.user.user_metadata.user_type;
+      console.log('User type from session metadata:', userType);
+    }
+    // 2. Check for pending user type from OAuth flow
+    else {
+      const pendingType = getPendingUserType();
+      if (pendingType === 'collector' || pendingType === 'dumper') {
+        userType = pendingType as 'dumper' | 'collector';
+        console.log('User type from pending OAuth:', userType);
+      }
+      // 3. Try to extract from URL
+      else {
+        const urlType = extractUserTypeFromUrl();
+        if (urlType === 'collector' || urlType === 'dumper') {
+          userType = urlType as 'dumper' | 'collector';
+          console.log('User type from URL:', urlType);
+        }
+      }
+    }
+    
+    console.log('Final determined user type:', userType);
+    
+    return {
+      id: userId,
+      email: session?.user?.email || '',
+      fullName: getDisplayName(session?.user || {} as SupabaseUser) || null,
+      userType: userType,
+      phone: null,
+      address: null,
+      emailVerified: true,
+      phoneVerified: false,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+  };
+
+  const ensureProfileExists = useCallback(async (supabaseUser?: SupabaseUser) => {
+    if (!supabaseUser) return;
+
+    try {
+      console.log('Ensuring profile exists for:', supabaseUser.id);
+      console.log('User metadata:', supabaseUser.user_metadata);
+      
+      const { data: existingProfile, error: checkError } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('id', supabaseUser.id)
+        .single();
+
+      if (checkError && checkError.code === 'PGRST116') {
+        console.log('Creating new profile');
+        
+        // CRITICAL FIX: Get user type from multiple sources with proper priority
+        let userType: 'dumper' | 'collector' = 'dumper'; // Default fallback
+        
+        // Priority 1: Check user metadata
+        if (supabaseUser.user_metadata?.user_type) {
+          userType = supabaseUser.user_metadata.user_type;
+          console.log('User type from metadata:', userType);
+        }
+        // Priority 2: Check app metadata
+        else if (supabaseUser.app_metadata?.user_type) {
+          userType = supabaseUser.app_metadata.user_type;
+          console.log('User type from app metadata:', userType);
+        }
+        // Priority 3: Check pending OAuth type
+        else {
+          const pendingType = getPendingUserType();
+          if (pendingType === 'collector' || pendingType === 'dumper') {
+            userType = pendingType as 'dumper' | 'collector';
+            console.log('User type from pending OAuth:', userType);
+          }
+          // Priority 4: Extract from URL
+          else {
+            const urlType = extractUserTypeFromUrl();
+            if (urlType === 'collector' || urlType === 'dumper') {
+              userType = urlType as 'dumper' | 'collector';
+              console.log('User type from URL:', urlType);
+            }
+          }
+        }
+        
+        console.log('Final determined user type for profile creation:', userType);
+        
+        const profileData = {
+          id: supabaseUser.id,
+          email: supabaseUser.email || '',
+          full_name: getDisplayName(supabaseUser),
+          user_type: userType,
+          phone: supabaseUser.user_metadata?.phone || null,
+          address: null,
+          email_verified: true,
+          phone_verified: false,
+        };
+
+        console.log('Creating profile with data:', profileData);
+
+        const { data: newProfile, error: profileError } = await supabase
+          .from('profiles')
+          .insert(profileData)
+          .select()
+          .single();
+
+        if (profileError) {
+          console.error('Error creating profile:', profileError);
+          throw new Error(`Failed to create profile: ${profileError.message}`);
+        } else {
+          console.log('Profile created successfully:', newProfile);
+        }
+      } else if (checkError) {
+        console.error('Error checking profile:', checkError);
+        throw new Error(`Profile check failed: ${checkError.message}`);
+      } else {
+        console.log('Profile already exists');
+      }
+    } catch (error: unknown) {
+      console.error('Error ensuring profile exists:', error);
+      throw error;
+    }
+  }, []);
+
   useEffect(() => {
     let mounted = true;
     let initializationTimeout: NodeJS.Timeout;
@@ -314,236 +543,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       }
       subscription.unsubscribe();
     };
-  }, []);
-
-  // Helper function to get display name from Google user data
-  const getDisplayName = (supabaseUser: SupabaseUser): string => {
-    if (supabaseUser.user_metadata?.full_name) {
-      return supabaseUser.user_metadata.full_name;
-    }
-    
-    if (supabaseUser.user_metadata?.name) {
-      return supabaseUser.user_metadata.name;
-    }
-    
-    const firstName = supabaseUser.user_metadata?.given_name || supabaseUser.user_metadata?.first_name;
-    const lastName = supabaseUser.user_metadata?.family_name || supabaseUser.user_metadata?.last_name;
-    
-    if (firstName && lastName) {
-      return `${firstName} ${lastName}`;
-    }
-    
-    if (firstName) {
-      return firstName;
-    }
-    
-    if (supabaseUser.email) {
-      const emailUsername = supabaseUser.email.split('@')[0];
-      return emailUsername.charAt(0).toUpperCase() + emailUsername.slice(1);
-    }
-    
-    return 'User';
-  };
-
-  const fetchUserProfile = async (userId: string) => {
-    try {
-      console.log('Fetching profile for user:', userId);
-      
-      // Use a shorter timeout for profile fetching
-      const profilePromise = supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .single();
-
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Profile fetch timeout')), 3000); // Reduced to 3 seconds
-      });
-
-      const { data, error } = await Promise.race([profilePromise, timeoutPromise]) as PostgrestSingleResponse<Database['public']['Tables']['profiles']['Row']>;
-
-      if (error && error.code !== 'PGRST116') {
-        console.error('Error fetching user profile:', error);
-        // Create a basic user object to prevent infinite loading
-        const basicUser = createBasicUser(userId);
-        setUser(basicUser);
-        setLoading(false);
-        setInitialized(true);
-        return;
-      }
-
-      if (data) {
-        console.log('Profile data found:', data);
-        const userData = {
-          id: data.id,
-          email: data.email,
-          fullName: data.full_name,
-          userType: data.user_type,
-          phone: data.phone,
-          address: data.address,
-          emailVerified: data.email_verified || true,
-          phoneVerified: data.phone_verified || false,
-          createdAt: data.created_at,
-          updatedAt: data.updated_at,
-        };
-        
-        console.log('Setting user data:', userData);
-        setUser(userData);
-        
-        // Update verification state based on user data
-        setVerification(prev => ({
-          ...prev,
-          emailVerified: userData.emailVerified,
-          phoneVerified: userData.phoneVerified,
-        }));
-      } else {
-        console.log('No profile found, creating basic user object');
-        const basicUser = createBasicUser(userId);
-        setUser(basicUser);
-        
-        try {
-          await ensureProfileExists(session?.user);
-        } catch (profileError) {
-          console.error('Failed to create profile:', profileError);
-        }
-      }
-    } catch (error: unknown) {
-      console.error('Error fetching user profile:', error);
-      // Fallback user object
-      const fallbackUser = createBasicUser(userId);
-      setUser(fallbackUser);
-    } finally {
-      setLoading(false);
-      setInitialized(true);
-    }
-  };
-
-  const createBasicUser = (userId: string): User => {
-    // CRITICAL FIX: Get user type from multiple sources
-    let userType: 'dumper' | 'collector' = 'dumper'; // Default fallback
-    
-    // 1. Check session user metadata
-    if (session?.user?.user_metadata?.user_type) {
-      userType = session.user.user_metadata.user_type;
-      console.log('User type from session metadata:', userType);
-    }
-    // 2. Check for pending user type from OAuth flow
-    else {
-      const pendingType = getPendingUserType();
-      if (pendingType === 'collector' || pendingType === 'dumper') {
-        userType = pendingType as 'dumper' | 'collector';
-        console.log('User type from pending OAuth:', userType);
-      }
-      // 3. Try to extract from URL
-      else {
-        const urlType = extractUserTypeFromUrl();
-        if (urlType === 'collector' || urlType === 'dumper') {
-          userType = urlType as 'dumper' | 'collector';
-          console.log('User type from URL:', userType);
-        }
-      }
-    }
-    
-    console.log('Final determined user type:', userType);
-    
-    return {
-      id: userId,
-      email: session?.user?.email || '',
-      fullName: getDisplayName(session?.user!) || null,
-      userType: userType,
-      phone: null,
-      address: null,
-      emailVerified: true,
-      phoneVerified: false,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-  };
-
-  const ensureProfileExists = async (supabaseUser?: SupabaseUser) => {
-    if (!supabaseUser) return;
-
-    try {
-      console.log('Ensuring profile exists for:', supabaseUser.id);
-      console.log('User metadata:', supabaseUser.user_metadata);
-      
-      const { data: existingProfile, error: checkError } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('id', supabaseUser.id)
-        .single();
-
-      if (checkError && checkError.code === 'PGRST116') {
-        console.log('Creating new profile');
-        
-        // CRITICAL FIX: Get user type from multiple sources with proper priority
-        let userType: 'dumper' | 'collector' = 'dumper'; // Default fallback
-        
-        // Priority 1: Check user metadata
-        if (supabaseUser.user_metadata?.user_type) {
-          userType = supabaseUser.user_metadata.user_type;
-          console.log('User type from metadata:', userType);
-        }
-        // Priority 2: Check app metadata
-        else if (supabaseUser.app_metadata?.user_type) {
-          userType = supabaseUser.app_metadata.user_type;
-          console.log('User type from app metadata:', userType);
-        }
-        // Priority 3: Check pending OAuth type
-        else {
-          const pendingType = getPendingUserType();
-          if (pendingType === 'collector' || pendingType === 'dumper') {
-            userType = pendingType as 'dumper' | 'collector';
-            console.log('User type from pending OAuth:', userType);
-          }
-          // Priority 4: Extract from URL
-          else {
-            const urlType = extractUserTypeFromUrl();
-            if (urlType === 'collector' || urlType === 'dumper') {
-              userType = urlType as 'dumper' | 'collector';
-              console.log('User type from URL:', urlType);
-            }
-          }
-        }
-        
-        console.log('Final determined user type for profile creation:', userType);
-        
-        const profileData = {
-          id: supabaseUser.id,
-          email: supabaseUser.email || '',
-          full_name: getDisplayName(supabaseUser),
-          user_type: userType,
-          phone: supabaseUser.user_metadata?.phone || null,
-          address: null,
-          email_verified: true,
-          phone_verified: false,
-        };
-
-        console.log('Creating profile with data:', profileData);
-
-        const { data: newProfile, error: profileError } = await supabase
-          .from('profiles')
-          .insert(profileData)
-          .select()
-          .single();
-
-        if (profileError) {
-          console.error('Error creating profile:', profileError);
-          throw new Error(`Failed to create profile: ${profileError.message}`);
-        } else {
-          console.log('Profile created successfully:', newProfile);
-        }
-      } else if (checkError) {
-        console.error('Error checking profile:', checkError);
-        throw new Error(`Profile check failed: ${checkError.message}`);
-      } else {
-        console.log('Profile already exists');
-      }
-    } catch (error: unknown) {
-      console.error('Error ensuring profile exists:', error);
-      throw error;
-    }
-  };
+  }, [ensureProfileExists, fetchUserProfile, initialized]);
 
   const signInWithGoogle = async (userType: 'dumper' | 'collector') => {
     setLoading(true);
