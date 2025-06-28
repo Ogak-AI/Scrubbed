@@ -25,16 +25,19 @@ export const LandingPage: React.FC = () => {
           });
           
           console.log('Location permission granted:', position.coords);
-        } catch (error: any) {
+        } catch (error: unknown) {
           console.log('Location permission denied or failed:', error);
           
           // Show a user-friendly message about location
-          if (error.code === 1) { // PERMISSION_DENIED
-            console.log('User denied location access');
-          } else if (error.code === 2) { // POSITION_UNAVAILABLE
-            console.log('Location unavailable');
-          } else if (error.code === 3) { // TIMEOUT
-            console.log('Location request timeout');
+          if (error && typeof error === 'object' && 'code' in error) {
+            const geolocationError = error as GeolocationPositionError;
+            if (geolocationError.code === 1) { // PERMISSION_DENIED
+              console.log('User denied location access');
+            } else if (geolocationError.code === 2) { // POSITION_UNAVAILABLE
+              console.log('Location unavailable');
+            } else if (geolocationError.code === 3) { // TIMEOUT
+              console.log('Location request timeout');
+            }
           }
         }
       } else {

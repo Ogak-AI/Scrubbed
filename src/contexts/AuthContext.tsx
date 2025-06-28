@@ -160,7 +160,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           body: emailContent
         });
         console.log('Welcome email sent successfully');
-      } catch (emailError) {
+      } catch {
         console.log('Welcome email service not configured, skipping email send');
       }
     } catch (error) {
@@ -406,7 +406,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           console.error('Failed to create profile:', profileError);
         }
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error fetching user profile:', error);
       // Fallback user object
       const fallbackUser = createBasicUser(userId);
@@ -500,7 +500,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             const urlType = extractUserTypeFromUrl();
             if (urlType === 'collector' || urlType === 'dumper') {
               userType = urlType as 'dumper' | 'collector';
-              console.log('User type from URL:', userType);
+              console.log('User type from URL:', urlType);
             }
           }
         }
@@ -538,7 +538,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       } else {
         console.log('Profile already exists');
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error ensuring profile exists:', error);
       throw error;
     }
@@ -581,7 +581,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       }
       
       // Don't set loading to false here - let the auth state change handle it
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error signing in with Google:', error);
       setLoading(false);
       throw error;
@@ -707,12 +707,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         emailSent: true,
         isVerifying: false,
       }));
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error resending email verification:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to resend email verification';
       setVerification(prev => ({
         ...prev,
         isVerifying: false,
-        error: error.message,
+        error: errorMessage,
       }));
       throw error;
     }
@@ -722,7 +723,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     setVerification(prev => ({ ...prev, isVerifying: true, error: null }));
 
     try {
-      const { data, error } = await supabase.functions.invoke('send-sms', {
+      const { error } = await supabase.functions.invoke('send-sms', {
         body: { phone },
       });
 
@@ -733,12 +734,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         phoneSent: true,
         isVerifying: false,
       }));
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error sending phone verification:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to send phone verification';
       setVerification(prev => ({
         ...prev,
         isVerifying: false,
-        error: error.message,
+        error: errorMessage,
       }));
       throw error;
     }
@@ -750,7 +752,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     setVerification(prev => ({ ...prev, isVerifying: true, error: null }));
 
     try {
-      const { data, error } = await supabase.functions.invoke('verify-phone', {
+      const { error } = await supabase.functions.invoke('verify-phone', {
         body: { code },
       });
 
@@ -772,12 +774,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         phoneVerified: true,
         isVerifying: false,
       }));
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error verifying phone code:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to verify phone code';
       setVerification(prev => ({
         ...prev,
         isVerifying: false,
-        error: error.message,
+        error: errorMessage,
       }));
       throw error;
     }

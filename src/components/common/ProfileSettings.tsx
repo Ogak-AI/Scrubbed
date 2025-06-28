@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ArrowLeft, User, Mail, Phone, MapPin, Save, AlertCircle, CheckCircle, Eye, EyeOff } from 'lucide-react';
+import { ArrowLeft, User, Mail, Phone, MapPin, Save, AlertCircle, CheckCircle, Eye } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 
 interface ProfileSettingsProps {
@@ -68,8 +68,9 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
       setTimeout(() => {
         onClose();
       }, 2000);
-    } catch (err: any) {
-      setError(err.message || 'Failed to update profile');
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to update profile';
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }

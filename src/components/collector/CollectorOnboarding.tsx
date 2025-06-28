@@ -1,21 +1,38 @@
 import React, { useState } from 'react';
-import { Trash2, MapPin, CheckCircle, Truck, Shield, Star, AlertCircle } from 'lucide-react';
+import { Trash2, MapPin, CheckCircle, Truck, Star, AlertCircle } from 'lucide-react';
 import { WASTE_TYPES } from '../../types';
 
 interface CollectorOnboardingProps {
-  onComplete: (profileData: any) => void;
+  onComplete: (profileData: CollectorProfileData) => void;
+}
+
+interface CollectorProfileData {
+  specializations: string[];
+  serviceRadius: number;
+  vehicleType: string;
+  experience: string;
+  certifications: string[];
+  availability: {
+    monday: { start: string; end: string; available: boolean };
+    tuesday: { start: string; end: string; available: boolean };
+    wednesday: { start: string; end: string; available: boolean };
+    thursday: { start: string; end: string; available: boolean };
+    friday: { start: string; end: string; available: boolean };
+    saturday: { start: string; end: string; available: boolean };
+    sunday: { start: string; end: string; available: boolean };
+  };
 }
 
 export const CollectorOnboarding: React.FC<CollectorOnboardingProps> = ({ onComplete }) => {
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [formData, setFormData] = useState({
-    specializations: [] as string[],
+  const [formData, setFormData] = useState<CollectorProfileData>({
+    specializations: [],
     serviceRadius: 10,
     vehicleType: '',
     experience: '',
-    certifications: [] as string[],
+    certifications: [],
     availability: {
       monday: { start: '09:00', end: '17:00', available: true },
       tuesday: { start: '09:00', end: '17:00', available: true },
@@ -49,8 +66,9 @@ export const CollectorOnboarding: React.FC<CollectorOnboardingProps> = ({ onComp
       }
 
       await onComplete(formData);
-    } catch (err: any) {
-      setError(err.message || 'Failed to create collector profile');
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to create collector profile';
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }

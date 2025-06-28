@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowLeft, MapPin, Clock, Package, User, Phone, Mail, Star, MessageSquare, Camera, Calendar, Trash2, AlertTriangle, X } from 'lucide-react';
+import { ArrowLeft, MapPin, Clock, Package, User, Phone, Mail, Star, MessageSquare, Calendar, Trash2, AlertTriangle, X } from 'lucide-react';
 import { useWasteRequests } from '../../hooks/useWasteRequests';
 import type { WasteRequest } from '../../types';
 
@@ -92,9 +92,10 @@ export const RequestDetails: React.FC<RequestDetailsProps> = ({ request, onClose
         // onClose();
       }, 1000);
       
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error cancelling request:', err);
-      setError(err.message || 'Failed to cancel request. Please try again.');
+      const errorMessage = err instanceof Error ? err.message : 'Failed to cancel request. Please try again.';
+      setError(errorMessage);
       setCancelling(false);
     }
   };
@@ -283,7 +284,7 @@ export const RequestDetails: React.FC<RequestDetailsProps> = ({ request, onClose
             {request.photos && request.photos.length > 0 && (
               <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-6">
                 <div className="flex items-center mb-4">
-                  <Camera className="h-5 w-5 text-gray-400 mr-2" />
+                  <MessageSquare className="h-5 w-5 text-gray-400 mr-2" />
                   <h2 className="text-lg font-semibold text-gray-900">Photos ({request.photos.length})</h2>
                 </div>
                 

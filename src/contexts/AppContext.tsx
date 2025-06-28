@@ -4,6 +4,7 @@ import React, { createContext, useContext, ReactNode } from 'react';
 interface AppContextType {
   // Add any app-wide state or functions here as needed
   // For now, we'll keep it minimal to resolve the import error
+  version: string;
 }
 
 // Create the context with default values
@@ -27,6 +28,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
   // Define any app-wide state or logic here
   const contextValue: AppContextType = {
     // Add context values here as needed
+    version: '1.0.0',
   };
 
   return (

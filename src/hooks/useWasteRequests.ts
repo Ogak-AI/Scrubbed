@@ -9,7 +9,7 @@ export const useWasteRequests = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const ensureUserProfileExists = async () => {
+  const ensureUserProfileExists = useCallback(async () => {
     if (!user) {
       throw new Error('User not authenticated');
     }
@@ -61,11 +61,11 @@ export const useWasteRequests = () => {
         console.log('Profile already exists:', existingProfile);
         return true;
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error in ensureUserProfileExists:', err);
       throw err;
     }
-  };
+  }, [user]);
 
   const fetchRequests = useCallback(async () => {
     if (!user) {
@@ -133,25 +133,18 @@ export const useWasteRequests = () => {
 
       setRequests(formattedRequests);
       console.log('Set requests state:', formattedRequests);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error fetching requests:', err);
-      setError(err.message);
+      const errorMessage = err instanceof Error ? err.message : 'Failed to fetch requests';
+      setError(errorMessage);
       // Don't leave in loading state indefinitely
       setRequests([]);
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [user, ensureUserProfileExists]);
 
-  const createRequest = async (requestData: {
-    wasteType: string;
-    description?: string;
-    location: { lat: number; lng: number };
-    address: string;
-    scheduledTime?: string;
-    estimatedAmount?: string;
-    photos?: string[];
-  }) => {
+  const createRequest = async (requestData: unknown) => {
     if (!user) {
       throw new Error('User not authenticated');
     }
@@ -179,15 +172,25 @@ export const useWasteRequests = () => {
 
       console.log('Profile verified:', profileCheck);
 
+      const typedRequestData = requestData as {
+        wasteType: string;
+        description?: string;
+        location: { lat: number; lng: number };
+        address: string;
+        scheduledTime?: string;
+        estimatedAmount?: string;
+        photos?: string[];
+      };
+
       const insertData = {
         dumper_id: user.id,
-        waste_type: requestData.wasteType,
-        description: requestData.description || null,
-        location: requestData.location,
-        address: requestData.address,
-        scheduled_time: requestData.scheduledTime || null,
-        estimated_amount: requestData.estimatedAmount || null,
-        photos: requestData.photos || null,
+        waste_type: typedRequestData.wasteType,
+        description: typedRequestData.description || null,
+        location: typedRequestData.location,
+        address: typedRequestData.address,
+        scheduled_time: typedRequestData.scheduledTime || null,
+        estimated_amount: typedRequestData.estimatedAmount || null,
+        photos: typedRequestData.photos || null,
         status: 'pending',
       };
 
@@ -244,7 +247,7 @@ export const useWasteRequests = () => {
       setRequests(prev => [newRequest, ...prev]);
       console.log('Added request to state');
       return newRequest;
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error creating request:', err);
       throw err;
     }
@@ -286,7 +289,7 @@ export const useWasteRequests = () => {
       ));
 
       return data;
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error accepting request:', err);
       throw err;
     }
@@ -316,7 +319,7 @@ export const useWasteRequests = () => {
       ));
 
       return data;
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error updating request status:', err);
       throw err;
     }

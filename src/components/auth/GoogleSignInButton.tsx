@@ -14,7 +14,7 @@ export const GoogleSignInButton: React.FC<GoogleSignInButtonProps> = ({ userType
     setLoading(true);
     try {
       await signInWithGoogle(userType);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Google sign-in error:', error);
       // Error handling is done in the context
     } finally {

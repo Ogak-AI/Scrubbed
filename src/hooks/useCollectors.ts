@@ -50,7 +50,7 @@ export const useCollectors = () => {
       }
 
       return true; // Profile exists
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error ensuring profile exists:', err);
       throw err;
     }
@@ -82,9 +82,10 @@ export const useCollectors = () => {
       }));
 
       setCollectors(formattedCollectors);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error fetching collectors:', err);
-      setError(err.message);
+      const errorMessage = err instanceof Error ? err.message : 'Failed to fetch collectors';
+      setError(errorMessage);
     }
   }, []);
 
@@ -148,9 +149,10 @@ export const useCollectors = () => {
         console.log('No collector profile found for user:', user.id);
         setMyCollectorProfile(null);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error fetching my collector profile:', err);
-      setError(err.message);
+      const errorMessage = err instanceof Error ? err.message : 'Failed to fetch collector profile';
+      setError(errorMessage);
       setMyCollectorProfile(null);
     }
   }, [user]);
@@ -224,9 +226,10 @@ export const useCollectors = () => {
       console.log('Collector profile created successfully:', newCollectorProfile);
       setMyCollectorProfile(newCollectorProfile);
       return newCollectorProfile;
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error creating collector profile:', err);
-      setError(err.message);
+      const errorMessage = err instanceof Error ? err.message : 'Failed to create collector profile';
+      setError(errorMessage);
       throw err;
     }
   }, [user, ensureUserProfileExists]);
@@ -248,9 +251,10 @@ export const useCollectors = () => {
       if (error) throw error;
 
       setMyCollectorProfile(prev => prev ? { ...prev, isAvailable } : null);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error updating availability:', err);
-      setError(err.message);
+      const errorMessage = err instanceof Error ? err.message : 'Failed to update availability';
+      setError(errorMessage);
       throw err;
     }
   }, [myCollectorProfile]);
@@ -272,7 +276,7 @@ export const useCollectors = () => {
       if (error) throw error;
 
       setMyCollectorProfile(prev => prev ? { ...prev, currentLocation: location } : null);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error updating location:', err);
       // Don't set error state for location updates as they're not critical
       console.warn('Location update failed, continuing without error');
@@ -292,9 +296,10 @@ export const useCollectors = () => {
         if (user?.userType === 'collector') {
           await fetchMyCollectorProfile();
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error('Error initializing collectors:', err);
-        setError(err.message);
+        const errorMessage = err instanceof Error ? err.message : 'Failed to initialize collectors';
+        setError(errorMessage);
       } finally {
         setLoading(false);
       }

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, MapPin, Clock, Trash2, User, Settings, LogOut, Bell, Search, Filter, AlertCircle, RefreshCw, Menu, X } from 'lucide-react';
+import { Plus, MapPin, Clock, Trash2, User, Settings, LogOut, Bell, Search, AlertCircle, RefreshCw, Menu, X } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useWasteRequests } from '../../hooks/useWasteRequests';
 import { RequestForm } from './RequestForm';
@@ -73,7 +73,7 @@ export const DumperDashboard: React.FC = () => {
     return 'there';
   };
 
-  const handleCreateRequest = async (requestData: any) => {
+  const handleCreateRequest = async (requestData: unknown) => {
     try {
       setCreateError(null);
       console.log('Dashboard: Creating request with data:', requestData);
@@ -82,9 +82,10 @@ export const DumperDashboard: React.FC = () => {
       setShowRequestForm(false);
       
       console.log('Dashboard: Request created successfully');
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Dashboard: Error creating request:', error);
-      setCreateError(error.message || 'Failed to create request. Please try again.');
+      const errorMessage = error instanceof Error ? error.message : 'Failed to create request. Please try again.';
+      setCreateError(errorMessage);
       
       // Don't close the form if there's an error, let user try again
       // setShowRequestForm(false);
@@ -351,7 +352,7 @@ export const DumperDashboard: React.FC = () => {
                 
                 <select
                   value={filter}
-                  onChange={(e) => setFilter(e.target.value as any)}
+                  onChange={(e) => setFilter(e.target.value as typeof filter)}
                   className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm w-full sm:w-auto"
                 >
                   <option value="all">All Status</option>

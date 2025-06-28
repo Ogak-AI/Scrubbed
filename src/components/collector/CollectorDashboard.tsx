@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { MapPin, Clock, Trash2, User, Settings, LogOut, Bell, Star, Navigation, AlertCircle, RefreshCw, Menu, X } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useCollectors } from '../../hooks/useCollectors';
@@ -81,7 +81,7 @@ export const CollectorDashboard: React.FC = () => {
   }, [user, myCollectorProfile, collectorsLoading, createCollectorProfile, creatingProfile]);
 
   // Enhanced geolocation function with better mobile support
-  const getCurrentLocation = () => {
+  const getCurrentLocation = useCallback(() => {
     setLocationLoading(true);
     setLocationError(null);
 
@@ -150,7 +150,7 @@ export const CollectorDashboard: React.FC = () => {
 
     // Use the enhanced geolocation call
     navigator.geolocation.getCurrentPosition(successCallback, errorCallback, options);
-  };
+  }, [myCollectorProfile, updateLocation]);
 
   // Get current location on component mount with better error handling
   useEffect(() => {
@@ -175,7 +175,7 @@ export const CollectorDashboard: React.FC = () => {
         clearInterval(locationInterval);
       }
     };
-  }, [myCollectorProfile, isAvailable, currentLocation, locationLoading]);
+  }, [myCollectorProfile, isAvailable, currentLocation, locationLoading, getCurrentLocation]);
 
   const handleAvailabilityToggle = async () => {
     try {

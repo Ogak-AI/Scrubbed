@@ -1,12 +1,11 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Trash2, Users, ArrowLeft, Menu, X } from 'lucide-react';
+import { Trash2, Users, ArrowLeft } from 'lucide-react';
 import { GoogleSignInButton } from '../components/auth/GoogleSignInButton';
 
 export const AuthPage: React.FC = () => {
   const { userType } = useParams<{ userType: 'dumper' | 'collector' }>();
   const navigate = useNavigate();
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const isDumper = userType === 'dumper';
   const isCollector = userType === 'collector';

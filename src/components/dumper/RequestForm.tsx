@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
-import { ArrowLeft, MapPin, Camera, Calendar, Package, AlertCircle, CheckCircle, RefreshCw, Upload, X } from 'lucide-react';
+import { ArrowLeft, MapPin, Calendar, Package, AlertCircle, CheckCircle, RefreshCw, Upload, X } from 'lucide-react';
 import { WASTE_TYPES } from '../../types';
 import { supabase } from '../../lib/supabase';
 
 interface RequestFormProps {
   onClose: () => void;
-  onSubmit: (requestData: any) => void;
+  onSubmit: (requestData: unknown) => void;
 }
 
 export const RequestForm: React.FC<RequestFormProps> = ({ onClose, onSubmit }) => {
@@ -87,7 +87,7 @@ export const RequestForm: React.FC<RequestFormProps> = ({ onClose, onSubmit }) =
           // Try to upload to Supabase Storage first
           const photoUrl = await uploadPhotoToSupabase(file);
           newPhotos.push(photoUrl);
-        } catch (storageError) {
+        } catch {
           console.warn('Supabase storage not configured, using base64 fallback');
           // Fallback to base64 for demo purposes
           const base64 = await new Promise<string>((resolve, reject) => {
@@ -105,8 +105,9 @@ export const RequestForm: React.FC<RequestFormProps> = ({ onClose, onSubmit }) =
         photos: [...prev.photos, ...newPhotos]
       }));
       
-    } catch (err: any) {
-      setError(err.message || 'Failed to upload photos');
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to upload photos';
+      setError(errorMessage);
     } finally {
       setUploadingPhoto(false);
     }
@@ -154,9 +155,10 @@ export const RequestForm: React.FC<RequestFormProps> = ({ onClose, onSubmit }) =
         onClose();
       }, 1500);
       
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('RequestForm: Error submitting request:', err);
-      setError(err.message || 'Failed to create request. Please try again.');
+      const errorMessage = err instanceof Error ? err.message : 'Failed to create request. Please try again.';
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -262,20 +264,21 @@ export const RequestForm: React.FC<RequestFormProps> = ({ onClose, onSubmit }) =
         }));
       }
 
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error getting location:', error);
       
       let errorMessage = 'Unable to get your location. ';
       
-      if (error.code) {
-        switch (error.code) {
-          case error.PERMISSION_DENIED:
+      if (error && typeof error === 'object' && 'code' in error) {
+        const geolocationError = error as GeolocationPositionError;
+        switch (geolocationError.code) {
+          case geolocationError.PERMISSION_DENIED:
             errorMessage += 'Please allow location access in your browser settings and try again.';
             break;
-          case error.POSITION_UNAVAILABLE:
+          case geolocationError.POSITION_UNAVAILABLE:
             errorMessage += 'Location information is unavailable. Please check your device settings.';
             break;
-          case error.TIMEOUT:
+          case geolocationError.TIMEOUT:
             errorMessage += 'Location request timed out. Please try again.';
             break;
           default:
