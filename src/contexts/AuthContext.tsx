@@ -1,7 +1,8 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { User as SupabaseUser, Session } from '@supabase/supabase-js';
+import { User as SupabaseUser, Session, PostgrestSingleResponse } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import type { User, VerificationState } from '../types';
+import type { Database } from '../types/database';
 
 interface AuthContextType {
   user: User | null;
@@ -359,7 +360,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         setTimeout(() => reject(new Error('Profile fetch timeout')), 3000); // Reduced to 3 seconds
       });
 
-      const { data, error } = await Promise.race([profilePromise, timeoutPromise]) as any;
+      const { data, error } = await Promise.race([profilePromise, timeoutPromise]) as PostgrestSingleResponse<Database['public']['Tables']['profiles']['Row']>;
 
       if (error && error.code !== 'PGRST116') {
         console.error('Error fetching user profile:', error);
