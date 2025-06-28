@@ -69,7 +69,7 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
     heartbeatIntervalMs: 30000, // 30 seconds
     reconnectAfterMs: (tries: number) => Math.min(tries * 1000, 10000), // Exponential backoff up to 10s
     timeout: 10000, // 10 second timeout
-    // Disable realtime in development if needed
+    // Enhanced error handling for development
     ...(import.meta.env.DEV && {
       transport: 'websocket',
       logger: (kind: string, msg: string, data?: any) => {
