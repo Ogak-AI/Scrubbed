@@ -47,9 +47,6 @@ export default defineConfig({
     include: ['react', 'react-dom', '@supabase/supabase-js', 'react-router-dom'],
     exclude: ['lucide-react'],
   },
-  define: {
-    global: 'globalThis',
-  },
   esbuild: {
     target: 'es2020',
   },
