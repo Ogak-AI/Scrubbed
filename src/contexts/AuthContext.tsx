@@ -458,14 +458,16 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   }, [redirectUrl]);
 
-  // PERFORMANCE: Optimized profile update function
+  // CRITICAL FIX: Enhanced profile update function with immediate state update
   const updateProfile = useCallback(async (updates: Partial<User>) => {
     if (!user) {
       throw new Error('User not authenticated');
     }
 
     try {
-      // Clear cache for this user
+      console.log('AuthContext: Starting profile update with:', updates);
+      
+      // Clear cache for this user immediately
       clearCache(`user_profile_${user.id}`);
       clearCache(`profile_exists_${user.id}`);
       
@@ -476,6 +478,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         .single();
 
       if (checkError && checkError.code === 'PGRST116') {
+        // Create new profile
         const profileData = {
           id: user.id,
           email: user.email,
@@ -496,9 +499,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         if (createError) {
           throw new Error(`Failed to create profile: ${createError.message}`);
         }
+        
+        console.log('AuthContext: Created new profile:', newProfile);
       } else if (checkError) {
         throw new Error(`Profile check failed: ${checkError.message}`);
       } else {
+        // Update existing profile
         const { data: updatedProfile, error: updateError } = await supabase
           .from('profiles')
           .update({
@@ -515,17 +521,27 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         if (updateError) {
           throw new Error(`Failed to update profile: ${updateError.message}`);
         }
+        
+        console.log('AuthContext: Updated existing profile:', updatedProfile);
       }
 
-      // Update local user state immediately
-      const updatedUser = { ...user, ...updates, updatedAt: new Date().toISOString() };
+      // CRITICAL FIX: Update local user state immediately and force re-render
+      const updatedUser = { 
+        ...user, 
+        ...updates, 
+        updatedAt: new Date().toISOString() 
+      };
+      
+      console.log('AuthContext: Setting updated user state:', updatedUser);
       setUser(updatedUser);
 
-      // Cache the updated user data
-      setCachedData(`user_profile_${user.id}`, updatedUser, 300000);
+      // Cache the updated user data with a shorter TTL to ensure freshness
+      setCachedData(`user_profile_${user.id}`, updatedUser, 60000); // 1 minute cache
+
+      console.log('AuthContext: Profile update completed successfully');
 
     } catch (error: unknown) {
-      console.error('Error updating profile:', error);
+      console.error('AuthContext: Error updating profile:', error);
       throw error;
     }
   }, [user]);

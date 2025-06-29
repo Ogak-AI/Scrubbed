@@ -32,19 +32,48 @@ export const VerificationPage: React.FC = () => {
     }
   }, [countdown]);
 
-  // CRITICAL FIX: More robust profile completion check
+  // CRITICAL FIX: Enhanced profile completion check with detailed validation
   useEffect(() => {
     if (user) {
-      const hasValidFullName = user.fullName && user.fullName.trim().length > 0;
-      const hasValidAddress = user.address && user.address.trim().length > 0;
+      const isValidFullName = (name: string | null): boolean => {
+        if (!name) return false;
+        const trimmed = name.trim();
+        return trimmed.length >= 2 && trimmed.includes(' '); // Require first and last name
+      };
+
+      const isValidAddress = (address: string | null): boolean => {
+        if (!address) return false;
+        const trimmed = address.trim();
+        
+        try {
+          const parsed = JSON.parse(trimmed);
+          if (typeof parsed === 'object' && parsed !== null) {
+            return !!(
+              parsed.street && parsed.street.trim().length >= 5 &&
+              parsed.city && parsed.city.trim().length >= 2 &&
+              parsed.state && parsed.state.trim().length >= 2 &&
+              parsed.zipCode && parsed.zipCode.trim().length >= 3 &&
+              parsed.country && parsed.country.trim().length >= 2
+            );
+          }
+        } catch {
+          return trimmed.length >= 10;
+        }
+        
+        return false;
+      };
+
+      const hasValidFullName = isValidFullName(user.fullName);
+      const hasValidAddress = isValidAddress(user.address);
       const needsProfileCompletion = !hasValidFullName || !hasValidAddress;
       
-      console.log('VerificationPage Profile Check:', {
+      console.log('VerificationPage Enhanced Profile Check:', {
         fullName: user.fullName,
         hasValidFullName,
         address: user.address,
         hasValidAddress,
-        needsProfileCompletion
+        needsProfileCompletion,
+        showingProfileSetup: needsProfileCompletion
       });
       
       setShowProfileSetup(needsProfileCompletion);
@@ -115,19 +144,37 @@ export const VerificationPage: React.FC = () => {
     setError(null);
     
     try {
-      // CRITICAL FIX: More robust validation
+      // CRITICAL FIX: Enhanced validation with specific requirements
       const trimmedFullName = profileData.fullName.trim();
       const trimmedStreet = profileData.address.street.trim();
       const trimmedCity = profileData.address.city.trim();
       const trimmedState = profileData.address.state.trim();
       const trimmedZipCode = profileData.address.zipCode.trim();
       
-      if (!trimmedFullName || trimmedFullName.length < 2) {
-        throw new Error('Please enter a valid full name (at least 2 characters)');
+      // Validate full name (must have at least first and last name)
+      if (!trimmedFullName || trimmedFullName.length < 3) {
+        throw new Error('Please enter your full name (first and last name)');
       }
       
-      if (!trimmedStreet || !trimmedCity || !trimmedState || !trimmedZipCode) {
-        throw new Error('Please complete all address fields');
+      if (!trimmedFullName.includes(' ')) {
+        throw new Error('Please enter both your first and last name');
+      }
+      
+      // Validate address components
+      if (!trimmedStreet || trimmedStreet.length < 5) {
+        throw new Error('Please enter a valid street address (at least 5 characters)');
+      }
+      
+      if (!trimmedCity || trimmedCity.length < 2) {
+        throw new Error('Please enter a valid city name');
+      }
+      
+      if (!trimmedState || trimmedState.length < 2) {
+        throw new Error('Please enter a valid state');
+      }
+      
+      if (!trimmedZipCode || trimmedZipCode.length < 3) {
+        throw new Error('Please enter a valid ZIP code');
       }
 
       console.log('Validation passed, updating profile...');
@@ -149,12 +196,14 @@ export const VerificationPage: React.FC = () => {
 
       await updateProfile(updateData);
       
-      console.log('Profile updated successfully - user should be redirected to dashboard');
+      console.log('Profile updated successfully - waiting for state to propagate...');
       
-      // CRITICAL FIX: Force a small delay to ensure state updates propagate
+      // CRITICAL FIX: Add a longer delay to ensure the auth context updates properly
       setTimeout(() => {
-        console.log('Profile update complete, App.tsx should handle redirect');
-      }, 100);
+        console.log('Profile update complete, checking if redirect happens...');
+        // The App.tsx component should automatically detect the profile is now complete
+        // and redirect to the dashboard. If this doesn't happen, there might be a caching issue.
+      }, 500);
       
     } catch (error: unknown) {
       console.error('Error updating profile:', error);
@@ -194,7 +243,7 @@ export const VerificationPage: React.FC = () => {
           <form onSubmit={handleProfileUpdate} className="space-y-6">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Full Name *
+                Full Name * <span className="text-xs text-gray-500">(First and Last Name)</span>
               </label>
               <div className="relative">
                 <User className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
@@ -203,11 +252,14 @@ export const VerificationPage: React.FC = () => {
                   value={profileData.fullName}
                   onChange={(e) => setProfileData({ ...profileData, fullName: e.target.value })}
                   required
-                  minLength={2}
+                  minLength={3}
                   className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                  placeholder="Enter your full name"
+                  placeholder="John Doe"
                 />
               </div>
+              <p className="mt-1 text-xs text-gray-500">
+                Please enter both your first and last name
+              </p>
             </div>
 
             <div>
@@ -243,10 +295,10 @@ export const VerificationPage: React.FC = () => {
               </p>
             </div>
 
-            {/* Billing Address Format */}
+            {/* Enhanced Address Section */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-4">
-                Billing Address *
+                Complete Address * <span className="text-xs text-gray-500">(All fields required)</span>
               </label>
               
               <div className="space-y-4">
@@ -269,6 +321,9 @@ export const VerificationPage: React.FC = () => {
                       placeholder="123 Main Street, Apt 4B"
                     />
                   </div>
+                  <p className="mt-1 text-xs text-gray-500">
+                    Include apartment/unit number if applicable
+                  </p>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -292,7 +347,7 @@ export const VerificationPage: React.FC = () => {
 
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">
-                      State *
+                      State/Province *
                     </label>
                     <input
                       type="text"
@@ -312,7 +367,7 @@ export const VerificationPage: React.FC = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">
-                      ZIP Code *
+                      ZIP/Postal Code *
                     </label>
                     <input
                       type="text"
