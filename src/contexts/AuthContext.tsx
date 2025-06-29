@@ -426,23 +426,38 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   }, [storeUserTypeForOAuth, redirectUrl]);
 
-  // FIXED: Use dynamic redirect URL for sign out
+  // CRITICAL FIX: Improved sign out function to handle redirect properly
   const signOut = useCallback(async () => {
     try {
+      console.log('Starting sign out process...');
+      
+      // Clear cache and local storage first
       clearCache();
       
       if (typeof window !== 'undefined') {
         try {
           localStorage.removeItem('supabase.auth.token');
           localStorage.removeItem('pending_user_type');
+          // Clear any Supabase auth tokens
+          const keys = Object.keys(localStorage);
+          keys.forEach(key => {
+            if (key.startsWith('sb-') && key.includes('-auth-token')) {
+              localStorage.removeItem(key);
+            }
+          });
         } catch (e) {
           console.warn('Failed to clear localStorage:', e);
         }
       }
       
+      // Sign out from Supabase
       const { error } = await supabase.auth.signOut();
-      if (error) throw error;
+      if (error) {
+        console.error('Supabase sign out error:', error);
+        // Don't throw error, continue with local cleanup
+      }
       
+      // Reset verification state
       setVerification({
         emailSent: false,
         phoneSent: false,
@@ -452,17 +467,29 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         error: null,
       });
 
+      // Reset user and session state
       setUser(null);
       setSession(null);
       setInitialized(false);
       
-      // FIXED: Use current origin instead of hardcoded domain
-      window.location.href = redirectUrl;
+      console.log('Sign out completed, redirecting...');
+      
+      // CRITICAL FIX: Use window.location.replace instead of href to avoid navigation issues
+      // This prevents the DNS error by ensuring a clean page reload
+      if (typeof window !== 'undefined') {
+        // Force a complete page reload to the root path
+        window.location.replace('/');
+      }
+      
     } catch (error) {
-      console.error('Error signing out:', error);
-      throw error;
+      console.error('Error during sign out:', error);
+      
+      // Even if sign out fails, force a page reload to clear the session
+      if (typeof window !== 'undefined') {
+        window.location.replace('/');
+      }
     }
-  }, [redirectUrl]);
+  }, []);
 
   // CRITICAL FIX: Enhanced profile update function with immediate state update
   const updateProfile = useCallback(async (updates: Partial<User>) => {
