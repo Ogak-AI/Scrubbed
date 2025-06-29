@@ -105,7 +105,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
     });
   };
 
-  // Enhanced form validation with specific field error tracking
+  // CRITICAL CHANGE: Simplified form validation - NO phone verification required
   const validateForm = () => {
     const errors: {[key: string]: string} = {};
     
@@ -129,11 +129,8 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
       errors.zipCode = 'Please enter your ZIP code';
     }
 
-    // Only validate phone format if phone is provided (not empty)
-    const phoneValue = formData.phone.trim();
-    if (phoneValue && !/^\+?[\d\s\-\(\)]+$/.test(phoneValue)) {
-      errors.phone = 'Please enter a valid phone number format';
-    }
+    // REMOVED: Phone validation completely - phone is now just a simple optional field
+    // No format validation, no verification requirements
 
     setFieldErrors(errors);
     return Object.keys(errors).length === 0;
@@ -397,7 +394,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
                   </div>
                 </div>
 
-                {/* Account Status */}
+                {/* Account Status - REMOVED phone verification status */}
                 <div className="pt-3 border-t border-gray-100 space-y-2">
                   <div className="flex items-center justify-between">
                     <span className="text-gray-500">Email Status:</span>
@@ -411,23 +408,6 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
                         <>
                           <AlertCircle className="h-3 w-3 text-red-500 mr-1" />
                           <span className="text-red-600 font-medium">Unverified</span>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                  
-                  <div className="flex items-center justify-between">
-                    <span className="text-gray-500">Phone Status:</span>
-                    <div className="flex items-center">
-                      {user?.phoneVerified ? (
-                        <>
-                          <CheckCircle className="h-3 w-3 text-green-500 mr-1" />
-                          <span className="text-green-600 font-medium">Verified</span>
-                        </>
-                      ) : (
-                        <>
-                          <AlertCircle className="h-3 w-3 text-yellow-500 mr-1" />
-                          <span className="text-yellow-600 font-medium">Unverified</span>
                         </>
                       )}
                     </div>
@@ -599,7 +579,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
                     </p>
                   </div>
 
-                  {/* Phone */}
+                  {/* CRITICAL CHANGE: Phone field is now completely optional with no verification */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       Phone Number (Optional)
@@ -610,18 +590,12 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
                         type="tel"
                         value={formData.phone}
                         onChange={(e) => handleInputChange('phone', e.target.value)}
-                        className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent ${getFieldErrorClass('phone')}`}
+                        className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
                         placeholder="+1 (555) 123-4567"
                       />
                     </div>
-                    {fieldErrors.phone && (
-                      <p className="mt-1 text-sm text-red-600 flex items-center">
-                        <AlertCircle className="h-4 w-4 mr-1" />
-                        {fieldErrors.phone}
-                      </p>
-                    )}
                     <p className="mt-1 text-xs text-gray-500">
-                      Include country code. Phone verification will be required if provided. Leave empty if you don't want to provide a phone number.
+                      Phone number is completely optional. No verification required.
                     </p>
                   </div>
 
@@ -739,7 +713,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
                     </div>
                   </div>
 
-                  {/* Account Info */}
+                  {/* Account Info - REMOVED phone verification status */}
                   <div className="bg-gray-50 rounded-lg p-4">
                     <h3 className="font-medium text-gray-900 mb-3">Account Information</h3>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
@@ -756,15 +730,15 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
                         </p>
                       </div>
                       <div>
-                        <span className="text-gray-600">Phone Verified:</span>
-                        <p className={`font-medium ${user?.phoneVerified ? 'text-green-600' : 'text-yellow-600'}`}>
-                          {user?.phoneVerified ? 'Verified' : user?.phone ? 'Not Verified' : 'No Phone Number'}
-                        </p>
-                      </div>
-                      <div>
                         <span className="text-gray-600">Account Type:</span>
                         <p className="font-medium text-gray-900">
                           {getAccountTypeDisplay()}
+                        </p>
+                      </div>
+                      <div>
+                        <span className="text-gray-600">Phone Number:</span>
+                        <p className="font-medium text-gray-900">
+                          {user?.phone ? 'Provided' : 'Not Provided'}
                         </p>
                       </div>
                     </div>

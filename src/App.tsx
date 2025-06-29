@@ -5,13 +5,12 @@ import { useAuth } from './hooks/useAuth';
 import { AppProvider } from './contexts/AppContext';
 import { LandingPage } from './pages/LandingPage';
 import { AuthPage } from './pages/AuthPage';
-import { VerificationPage } from './components/auth/VerificationPage';
 import { DumperDashboard } from './components/dumper/DumperDashboard';
 import { CollectorDashboard } from './components/collector/CollectorDashboard';
 import { AdminDashboard } from './components/admin/AdminDashboard';
 
 const AppContent: React.FC = () => {
-  const { user, loading, verification } = useAuth();
+  const { user, loading } = useAuth();
 
   if (loading) {
     return (
@@ -37,22 +36,12 @@ const AppContent: React.FC = () => {
     );
   }
 
-  // CRITICAL CHANGE: Only show verification page for phone verification if user has a phone number
-  // Remove all profile completion checks - go directly to dashboard
-  const hasPhoneNumber = user.phone && typeof user.phone === 'string' && user.phone.trim().length > 0;
-  const needsPhoneVerification = hasPhoneNumber && !verification.phoneVerified;
-  
-  console.log('App.tsx - Simplified Logic:', {
-    hasPhoneNumber,
-    phoneVerified: verification.phoneVerified,
-    needsPhoneVerification,
-    decision: needsPhoneVerification ? 'SHOW_PHONE_VERIFICATION' : 'SHOW_DASHBOARD'
+  // CRITICAL CHANGE: No verification checks - go directly to dashboard
+  // Phone verification is completely removed from the flow
+  console.log('App.tsx - No Verification Required:', {
+    userType: user.userType,
+    decision: 'SHOW_DASHBOARD_DIRECTLY'
   });
-  
-  // Only show verification page if phone verification is needed
-  if (needsPhoneVerification) {
-    return <VerificationPage />;
-  }
 
   // Get the appropriate dashboard component based on user type
   const getDashboardComponent = () => {
@@ -69,7 +58,7 @@ const AppContent: React.FC = () => {
     }
   };
 
-  // User is authenticated - show their dashboard directly
+  // User is authenticated - show their dashboard directly (no verification required)
   return (
     <Router>
       <Routes>
@@ -82,7 +71,7 @@ const AppContent: React.FC = () => {
         <Route path="/collector" element={<CollectorDashboard />} />
         <Route path="/admin" element={<AdminDashboard />} />
         
-        {/* Verification route - redirect to dashboard if no phone verification needed */}
+        {/* Remove verification route completely - redirect to dashboard */}
         <Route path="/verify" element={<Navigate to="/" replace />} />
         
         {/* Redirect any auth routes to dashboard if already logged in */}
