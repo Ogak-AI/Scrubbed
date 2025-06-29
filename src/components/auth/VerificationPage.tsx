@@ -8,6 +8,8 @@ export const VerificationPage: React.FC = () => {
   const [phoneCode, setPhoneCode] = useState('');
   const [countdown, setCountdown] = useState(0);
   const [showProfileSetup, setShowProfileSetup] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [profileData, setProfileData] = useState({
     fullName: user?.fullName || '',
     userType: user?.userType || 'dumper' as 'dumper' | 'collector',
@@ -34,6 +36,11 @@ export const VerificationPage: React.FC = () => {
   useEffect(() => {
     if (user) {
       const needsProfileCompletion = !user.fullName || !user.address;
+      console.log('Profile completion check:', {
+        fullName: user.fullName,
+        address: user.address,
+        needsProfileCompletion
+      });
       setShowProfileSetup(needsProfileCompletion);
       
       // Parse existing address if available
@@ -96,29 +103,44 @@ export const VerificationPage: React.FC = () => {
   const handleProfileUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Validate required fields
-    if (!profileData.fullName.trim()) {
-      alert('Please enter your full name');
-      return;
-    }
+    console.log('Profile update started with data:', profileData);
     
-    if (!profileData.address.street.trim() || !profileData.address.city.trim() || 
-        !profileData.address.state.trim() || !profileData.address.zipCode.trim()) {
-      alert('Please complete all address fields');
-      return;
-    }
-
+    setLoading(true);
+    setError(null);
+    
     try {
-      await updateProfile({
+      // Validate required fields
+      if (!profileData.fullName.trim()) {
+        throw new Error('Please enter your full name');
+      }
+      
+      if (!profileData.address.street.trim() || !profileData.address.city.trim() || 
+          !profileData.address.state.trim() || !profileData.address.zipCode.trim()) {
+        throw new Error('Please complete all address fields');
+      }
+
+      console.log('Validation passed, updating profile...');
+
+      const updateData = {
         fullName: profileData.fullName.trim(),
         userType: profileData.userType,
         phone: profileData.phone.trim() || null,
         address: formatAddress(profileData.address),
-      });
+      };
+
+      console.log('Calling updateProfile with:', updateData);
+
+      await updateProfile(updateData);
+      
+      console.log('Profile updated successfully');
       setShowProfileSetup(false);
-    } catch (error) {
+      
+    } catch (error: unknown) {
       console.error('Error updating profile:', error);
-      alert('Failed to update profile. Please try again.');
+      const errorMessage = error instanceof Error ? error.message : 'Failed to update profile. Please try again.';
+      setError(errorMessage);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -137,6 +159,16 @@ export const VerificationPage: React.FC = () => {
               Please complete your profile to continue using Scrubbed
             </p>
           </div>
+
+          {/* Error Display */}
+          {error && (
+            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+              <div className="flex items-center">
+                <AlertCircle className="h-5 w-5 text-red-500 mr-2" />
+                <p className="text-red-600 text-sm">{error}</p>
+              </div>
+            </div>
+          )}
 
           <form onSubmit={handleProfileUpdate} className="space-y-6">
             <div>
@@ -296,9 +328,17 @@ export const VerificationPage: React.FC = () => {
 
             <button
               type="submit"
-              className="w-full bg-green-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-green-700 transition-colors"
+              disabled={loading}
+              className="w-full bg-green-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center"
             >
-              Complete Profile
+              {loading ? (
+                <>
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                  Completing Profile...
+                </>
+              ) : (
+                'Complete Profile'
+              )}
             </button>
           </form>
         </div>
