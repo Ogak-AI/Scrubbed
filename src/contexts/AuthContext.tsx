@@ -37,8 +37,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     error: null,
   });
 
-  // PERFORMANCE: Memoize redirect URL
-  const redirectUrl = useMemo(() => 'https://scrubbed.online', []);
+  // FIXED: Use dynamic redirect URL instead of hardcoded domain
+  const redirectUrl = useMemo(() => {
+    if (typeof window !== 'undefined') {
+      return window.location.origin;
+    }
+    return 'http://localhost:5173';
+  }, []);
 
   // PERFORMANCE: Memoize user type extraction functions
   const extractUserTypeFromUrl = useCallback((): string | null => {
@@ -421,7 +426,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   }, [storeUserTypeForOAuth, redirectUrl]);
 
-  // PERFORMANCE: Optimized sign out function
+  // FIXED: Use dynamic redirect URL for sign out
   const signOut = useCallback(async () => {
     try {
       clearCache();
@@ -451,6 +456,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       setSession(null);
       setInitialized(false);
       
+      // FIXED: Use current origin instead of hardcoded domain
       window.location.href = redirectUrl;
     } catch (error) {
       console.error('Error signing out:', error);

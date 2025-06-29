@@ -18,24 +18,23 @@ if (supabaseUrl.includes('placeholder') || supabaseUrl.includes('your-project'))
   throw new Error('Supabase URL is not configured properly. Please update your .env file with real Supabase credentials.');
 }
 
-// Get the current origin, prioritizing the custom domain
+// FIXED: Get the current origin dynamically instead of hardcoding domain
 const getCurrentOrigin = () => {
   if (typeof window !== 'undefined') {
-    if (window.location.hostname === 'scrubbed.online') {
-      return 'https://scrubbed.online';
-    }
     return window.location.origin;
   }
-  return 'https://scrubbed.online';
+  // Fallback for server-side rendering - will be replaced by actual deployment URL
+  return 'http://localhost:5173';
 };
 
 export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
   auth: {
+    // FIXED: Use dynamic origin instead of hardcoded domain
     redirectTo: getCurrentOrigin(),
     autoRefreshToken: true,
-    persistSession: true, // ENABLED: Re-enable session persistence for better performance
+    persistSession: true,
     detectSessionInUrl: true,
-    refreshTokenRetryCount: 2, // Increased from 1
+    refreshTokenRetryCount: 2,
     // Use localStorage for better performance
     storage: {
       getItem: (key: string) => {
@@ -67,11 +66,11 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
   // OPTIMIZED: Better realtime configuration for performance
   realtime: {
     params: {
-      eventsPerSecond: 1, // Reduced from 2 for better performance
+      eventsPerSecond: 1,
     },
-    heartbeatIntervalMs: 60000, // Increased to 60 seconds
-    reconnectAfterMs: (tries: number) => Math.min(tries * 2000, 30000), // Slower reconnection
-    timeout: 20000, // Increased timeout
+    heartbeatIntervalMs: 60000,
+    reconnectAfterMs: (tries: number) => Math.min(tries * 2000, 30000),
+    timeout: 20000,
   },
 });
 
@@ -217,10 +216,8 @@ supabase.auth.onAuthStateChange((event, session) => {
       };
     }
     
-    // Clear cache on sign in
     clearCache();
   } else if (event === 'SIGNED_OUT') {
-    // Clear cache and localStorage on sign out
     clearCache();
     if (typeof window !== 'undefined') {
       try {
