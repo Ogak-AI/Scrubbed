@@ -15,6 +15,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
   const [showPersonalInfo, setShowPersonalInfo] = useState(true);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<{[key: string]: string}>({});
   
   const countries = getCountriesWithPopularFirst();
   
@@ -68,6 +69,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
       fullName: lastName ? `${firstName} ${lastName}` : firstName
     }));
     // Clear any existing errors when user makes changes
+    clearFieldError('fullName');
     if (error) setError(null);
     if (success) setSuccess(false);
   };
@@ -79,6 +81,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
       fullName: firstName ? `${firstName} ${lastName}` : lastName
     }));
     // Clear any existing errors when user makes changes
+    clearFieldError('fullName');
     if (error) setError(null);
     if (success) setSuccess(false);
   };
@@ -93,37 +96,47 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
     });
   };
 
-  // Enhanced form validation that allows optional phone
+  // Clear specific field error
+  const clearFieldError = (fieldName: string) => {
+    setFieldErrors(prev => {
+      const newErrors = { ...prev };
+      delete newErrors[fieldName];
+      return newErrors;
+    });
+  };
+
+  // Enhanced form validation with specific field error tracking
   const validateForm = () => {
-    const errors: string[] = [];
+    const errors: {[key: string]: string} = {};
     
     if (!formData.fullName.trim()) {
-      errors.push('Please enter your full name');
+      errors.fullName = 'Please enter your full name';
     }
     
     if (!formData.address.street.trim()) {
-      errors.push('Please enter your street address');
+      errors.street = 'Please enter your street address';
     }
     
     if (!formData.address.city.trim()) {
-      errors.push('Please enter your city');
+      errors.city = 'Please enter your city';
     }
     
     if (!formData.address.state.trim()) {
-      errors.push('Please enter your state');
+      errors.state = 'Please enter your state';
     }
     
     if (!formData.address.zipCode.trim()) {
-      errors.push('Please enter your ZIP code');
+      errors.zipCode = 'Please enter your ZIP code';
     }
 
     // Only validate phone format if phone is provided (not empty)
     const phoneValue = formData.phone.trim();
     if (phoneValue && !/^\+?[\d\s\-\(\)]+$/.test(phoneValue)) {
-      errors.push('Please enter a valid phone number format');
+      errors.phone = 'Please enter a valid phone number format';
     }
 
-    return errors;
+    setFieldErrors(errors);
+    return Object.keys(errors).length === 0;
   };
 
   // Check if form has changes (including when phone is removed)
@@ -150,9 +163,9 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
     console.log('ProfileSettings: Current user data:', user);
     
     // Validate form before submission
-    const validationErrors = validateForm();
-    if (validationErrors.length > 0) {
-      const errorMessage = validationErrors.join('. ');
+    if (!validateForm()) {
+      const errorFields = Object.keys(fieldErrors);
+      const errorMessage = `Please fix the following fields: ${errorFields.join(', ')}`;
       console.log('ProfileSettings: Validation failed:', errorMessage);
       setError(errorMessage);
       return;
@@ -168,6 +181,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
     setLoading(true);
     setError(null);
     setSuccess(false);
+    setFieldErrors({});
 
     try {
       const updateData = {
@@ -183,6 +197,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
       console.log('ProfileSettings: Profile updated successfully');
       setSuccess(true);
       setError(null);
+      setFieldErrors({});
       
       // Show success message for 3 seconds, then close
       setTimeout(() => {
@@ -202,6 +217,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
     // Clear any existing errors when user makes changes
+    clearFieldError(field);
     if (error) setError(null);
     if (success) setSuccess(false);
   };
@@ -212,6 +228,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
       address: { ...prev.address, [field]: value }
     }));
     // Clear any existing errors when user makes changes
+    clearFieldError(field);
     if (error) setError(null);
     if (success) setSuccess(false);
   };
@@ -273,6 +290,11 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
 
   const dismissError = () => {
     setError(null);
+  };
+
+  // Helper function to get field error styling
+  const getFieldErrorClass = (fieldName: string) => {
+    return fieldErrors[fieldName] ? 'border-red-300 bg-red-50' : 'border-gray-300';
   };
 
   return (
@@ -475,6 +497,27 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
                   </div>
                 )}
 
+                {/* Field-specific error messages */}
+                {Object.keys(fieldErrors).length > 0 && (
+                  <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                    <div className="flex items-start">
+                      <AlertCircle className="h-5 w-5 text-yellow-500 mr-2 mt-0.5" />
+                      <div>
+                        <p className="text-yellow-800 text-sm font-medium mb-2">Please fix the following issues:</p>
+                        <ul className="text-yellow-700 text-sm space-y-1">
+                          {Object.entries(fieldErrors).map(([field, message]) => (
+                            <li key={field} className="flex items-center">
+                              <span className="w-2 h-2 bg-yellow-500 rounded-full mr-2"></span>
+                              <strong className="capitalize">{field === 'fullName' ? 'Full Name' : field}:</strong>
+                              <span className="ml-1">{message}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <form onSubmit={handleSubmit} className="space-y-6">
                   {/* Name Fields */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -489,10 +532,16 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
                           value={getFirstName()}
                           onChange={(e) => setFirstName(e.target.value)}
                           required
-                          className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                          className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent ${getFieldErrorClass('fullName')}`}
                           placeholder="Enter your first name"
                         />
                       </div>
+                      {fieldErrors.fullName && (
+                        <p className="mt-1 text-sm text-red-600 flex items-center">
+                          <AlertCircle className="h-4 w-4 mr-1" />
+                          {fieldErrors.fullName}
+                        </p>
+                      )}
                     </div>
 
                     <div>
@@ -505,7 +554,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
                           type="text"
                           value={getLastName()}
                           onChange={(e) => setLastName(e.target.value)}
-                          className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                          className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent ${getFieldErrorClass('fullName')}`}
                           placeholder="Enter your last name"
                         />
                       </div>
@@ -561,10 +610,16 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
                         type="tel"
                         value={formData.phone}
                         onChange={(e) => handleInputChange('phone', e.target.value)}
-                        className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                        className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent ${getFieldErrorClass('phone')}`}
                         placeholder="+1 (555) 123-4567"
                       />
                     </div>
+                    {fieldErrors.phone && (
+                      <p className="mt-1 text-sm text-red-600 flex items-center">
+                        <AlertCircle className="h-4 w-4 mr-1" />
+                        {fieldErrors.phone}
+                      </p>
+                    )}
                     <p className="mt-1 text-xs text-gray-500">
                       Include country code. Phone verification will be required if provided. Leave empty if you don't want to provide a phone number.
                     </p>
@@ -588,10 +643,16 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
                             value={formData.address.street}
                             onChange={(e) => handleAddressChange('street', e.target.value)}
                             required
-                            className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                            className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent ${getFieldErrorClass('street')}`}
                             placeholder="123 Main Street, Apt 4B"
                           />
                         </div>
+                        {fieldErrors.street && (
+                          <p className="mt-1 text-sm text-red-600 flex items-center">
+                            <AlertCircle className="h-4 w-4 mr-1" />
+                            {fieldErrors.street}
+                          </p>
+                        )}
                       </div>
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -604,9 +665,15 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
                             value={formData.address.city}
                             onChange={(e) => handleAddressChange('city', e.target.value)}
                             required
-                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                            className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent ${getFieldErrorClass('city')}`}
                             placeholder="New York"
                           />
+                          {fieldErrors.city && (
+                            <p className="mt-1 text-sm text-red-600 flex items-center">
+                              <AlertCircle className="h-4 w-4 mr-1" />
+                              {fieldErrors.city}
+                            </p>
+                          )}
                         </div>
 
                         <div>
@@ -618,9 +685,15 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
                             value={formData.address.state}
                             onChange={(e) => handleAddressChange('state', e.target.value)}
                             required
-                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                            className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent ${getFieldErrorClass('state')}`}
                             placeholder="NY"
                           />
+                          {fieldErrors.state && (
+                            <p className="mt-1 text-sm text-red-600 flex items-center">
+                              <AlertCircle className="h-4 w-4 mr-1" />
+                              {fieldErrors.state}
+                            </p>
+                          )}
                         </div>
                       </div>
 
@@ -634,9 +707,15 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
                             value={formData.address.zipCode}
                             onChange={(e) => handleAddressChange('zipCode', e.target.value)}
                             required
-                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                            className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent ${getFieldErrorClass('zipCode')}`}
                             placeholder="10001"
                           />
+                          {fieldErrors.zipCode && (
+                            <p className="mt-1 text-sm text-red-600 flex items-center">
+                              <AlertCircle className="h-4 w-4 mr-1" />
+                              {fieldErrors.zipCode}
+                            </p>
+                          )}
                         </div>
 
                         <div>
