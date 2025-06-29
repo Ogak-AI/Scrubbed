@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ArrowLeft, MapPin, Calendar, Package, AlertCircle, CheckCircle, RefreshCw, Upload, X, Navigation, DollarSign } from 'lucide-react';
 import { WASTE_TYPES } from '../../types';
 import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../hooks/useAuth';
+import { getCurrencySymbol, parseCountryFromAddress } from '../../utils/currency';
 
 interface RequestFormData {
   wasteType: string;
@@ -28,6 +30,7 @@ interface RequestFormProps {
 }
 
 export const RequestForm: React.FC<RequestFormProps> = ({ onClose, onSubmit }) => {
+  const { user } = useAuth();
   const [formData, setFormData] = useState<RequestFormData>({
     wasteType: '',
     description: '',
@@ -46,6 +49,43 @@ export const RequestForm: React.FC<RequestFormProps> = ({ onClose, onSubmit }) =
   const [currentLocation, setCurrentLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [locationAccuracy, setLocationAccuracy] = useState<number | null>(null);
   const [locationAttempts, setLocationAttempts] = useState(0);
+
+  // FEATURE 1: Auto-fill address from user profile
+  useEffect(() => {
+    if (user?.address && !formData.address) {
+      try {
+        const parsed = JSON.parse(user.address);
+        if (typeof parsed === 'object') {
+          // Format the address nicely for display
+          const addressParts = [];
+          if (parsed.street) addressParts.push(parsed.street);
+          if (parsed.city) addressParts.push(parsed.city);
+          if (parsed.state) addressParts.push(parsed.state);
+          if (parsed.zipCode) addressParts.push(parsed.zipCode);
+          if (parsed.country && parsed.country !== 'United States') addressParts.push(parsed.country);
+          
+          const formattedAddress = addressParts.join(', ');
+          if (formattedAddress) {
+            setFormData(prev => ({ ...prev, address: formattedAddress }));
+            console.log('Auto-filled address from user profile:', formattedAddress);
+          }
+        } else if (typeof user.address === 'string' && user.address.trim()) {
+          // If address is a plain string, use it directly
+          setFormData(prev => ({ ...prev, address: user.address }));
+          console.log('Auto-filled address from user profile (plain text):', user.address);
+        }
+      } catch (error) {
+        console.warn('Could not parse user address:', error);
+        // If parsing fails but address exists as string, use it
+        if (typeof user.address === 'string' && user.address.trim()) {
+          setFormData(prev => ({ ...prev, address: user.address }));
+        }
+      }
+    }
+  }, [user?.address, formData.address]);
+
+  // FEATURE 2: Get currency symbol based on user's country
+  const currencySymbol = getCurrencySymbol(parseCountryFromAddress(user?.address));
 
   const validateForm = () => {
     const errors: {[key: string]: string} = {};
@@ -413,6 +453,11 @@ export const RequestForm: React.FC<RequestFormProps> = ({ onClose, onSubmit }) =
     return 'Use current location';
   };
 
+  const refreshLocation = () => {
+    setLocationAttempts(0); // Reset attempts for fresh start
+    getCurrentLocation();
+  };
+
   if (success) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
@@ -467,6 +512,18 @@ export const RequestForm: React.FC<RequestFormProps> = ({ onClose, onSubmit }) =
                 >
                   <RefreshCw className="h-4 w-4" />
                 </button>
+              </div>
+            </div>
+          )}
+
+          {/* Auto-fill Notice */}
+          {user?.address && formData.address && (
+            <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+              <div className="flex items-center">
+                <CheckCircle className="h-5 w-5 text-blue-500 mr-2" />
+                <p className="text-blue-700 text-sm">
+                  <strong>Address auto-filled</strong> from your profile. You can edit it below if needed.
+                </p>
               </div>
             </div>
           )}
@@ -612,20 +669,22 @@ export const RequestForm: React.FC<RequestFormProps> = ({ onClose, onSubmit }) =
               </div>
             </div>
 
-            {/* Price */}
+            {/* Price with Dynamic Currency Symbol */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Offered Price (Optional)
               </label>
               <div className="relative">
-                <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                <div className="absolute left-3 top-1/2 transform -translate-y-1/2 flex items-center">
+                  <span className="text-gray-500 font-medium text-sm">{currencySymbol}</span>
+                </div>
                 <input
                   type="number"
                   step="0.01"
                   min="0"
                   value={formData.price}
                   onChange={(e) => handleInputChange('price', e.target.value)}
-                  className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm sm:text-base ${
+                  className={`w-full pl-8 pr-4 py-3 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm sm:text-base ${
                     validationErrors.price ? 'border-red-300 bg-red-50' : 'border-gray-300'
                   }`}
                   placeholder="0.00"
@@ -638,7 +697,7 @@ export const RequestForm: React.FC<RequestFormProps> = ({ onClose, onSubmit }) =
                 </p>
               )}
               <p className="mt-1 text-xs text-gray-500">
-                Offer a price to attract collectors. Leave empty for collectors to quote.
+                Offer a price to attract collectors. Leave empty for collectors to quote. Currency: {parseCountryFromAddress(user?.address)}
               </p>
             </div>
 
@@ -764,7 +823,7 @@ export const RequestForm: React.FC<RequestFormProps> = ({ onClose, onSubmit }) =
         <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4 sm:p-6">
           <h4 className="font-medium text-blue-800 mb-2 text-sm sm:text-base">What happens next?</h4>
           <ol className="text-blue-700 text-xs sm:text-sm space-y-1">
-            <li>1. Your request will be posted to nearby collectors</li>
+            <li>1. Your request will be posted to nearby collectors in your city</li>
             <li>2. You'll receive notifications when collectors show interest</li>
             <li>3. Choose your preferred collector and confirm the pickup</li>
             <li>4. Track your collection in real-time</li>

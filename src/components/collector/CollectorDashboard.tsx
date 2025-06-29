@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { MapPin, Clock, Trash2, User, Settings, LogOut, Bell, Star, Navigation, AlertCircle, RefreshCw, Menu, X } from 'lucide-react';
+import { MapPin, Clock, Trash2, User, Settings, LogOut, Bell, Star, Navigation, AlertCircle, RefreshCw, Menu, X, CheckCircle } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useCollectors } from '../../hooks/useCollectors';
 import { useWasteRequests } from '../../hooks/useWasteRequests';
 import { ProfileSettings } from '../common/ProfileSettings';
+import { parseCountryFromAddress } from '../../utils/currency';
 
 export const CollectorDashboard: React.FC = () => {
   const { user, signOut } = useAuth();
@@ -20,15 +21,57 @@ export const CollectorDashboard: React.FC = () => {
   const [locationAccuracy, setLocationAccuracy] = useState<number | null>(null);
   const [locationAttempts, setLocationAttempts] = useState(0);
 
-  // Filter requests for collector view - only show pending requests within 4km from dumpers
+  // FEATURE 4: Parse user's location for filtering
+  const userLocation = React.useMemo(() => {
+    if (!user?.address) return null;
+    
+    try {
+      const parsed = JSON.parse(user.address);
+      if (typeof parsed === 'object') {
+        return {
+          city: parsed.city?.toLowerCase().trim(),
+          state: parsed.state?.toLowerCase().trim(),
+          country: parsed.country?.toLowerCase().trim(),
+        };
+      }
+    } catch {
+      // If parsing fails, return null
+    }
+    
+    return null;
+  }, [user?.address]);
+
+  // FEATURE 4: Filter requests for collector view - only show requests from same city, state, and country
   const availableRequests = requests.filter(r => {
     // Only show pending requests that don't have a collector assigned
     if (r.status !== 'pending' || r.collectorId) return false;
     
-    // Don't show requests created by this collector (collectors shouldn't create requests)
+    // Don't show requests created by this collector
     if (r.dumperId === user?.id) return false;
     
-    // If we have current location, filter by distance (4km radius)
+    // FEATURE 4: Location-based filtering - only show requests from same city, state, country
+    if (userLocation && r.address) {
+      try {
+        // Try to parse the request address to extract location components
+        const addressLower = r.address.toLowerCase();
+        
+        // Check if the request address contains the user's city, state, and country
+        const hasCity = userLocation.city && addressLower.includes(userLocation.city);
+        const hasState = userLocation.state && addressLower.includes(userLocation.state);
+        const hasCountry = userLocation.country && addressLower.includes(userLocation.country);
+        
+        // Only show requests that match city, state, and country
+        if (!hasCity || !hasState || !hasCountry) {
+          return false;
+        }
+      } catch (error) {
+        console.warn('Error filtering request by location:', error);
+        // If we can't parse location, don't show the request to be safe
+        return false;
+      }
+    }
+    
+    // If we have current location, also filter by distance (4km radius)
     if (currentLocation && r.location) {
       const distance = calculateDistance(
         currentLocation.lat,
@@ -39,12 +82,31 @@ export const CollectorDashboard: React.FC = () => {
       return distance <= 4; // 4km radius
     }
     
-    // If no location available, don't show any requests (location is required for collectors)
-    return false;
+    // If no current location but location-based filtering passed, show the request
+    return userLocation !== null;
   });
 
   // Filter for collector's accepted jobs only
   const myJobs = requests.filter(r => r.collectorId === user?.id);
+
+  // FEATURE 3: Check if collector profile is incomplete
+  const isProfileIncomplete = React.useMemo(() => {
+    if (!user || user.userType !== 'collector') return false;
+    
+    // Check if user has incomplete address information
+    if (!user.address) return true;
+    
+    try {
+      const parsed = JSON.parse(user.address);
+      if (typeof parsed === 'object') {
+        return !parsed.city || !parsed.state || !parsed.country;
+      }
+    } catch {
+      return true;
+    }
+    
+    return true;
+  }, [user]);
 
   useEffect(() => {
     if (myCollectorProfile) {
@@ -513,6 +575,28 @@ export const CollectorDashboard: React.FC = () => {
           </div>
         )}
 
+        {/* FEATURE 3: Profile Completion Hint */}
+        {isProfileIncomplete && (
+          <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center">
+                <AlertCircle className="h-5 w-5 text-yellow-500 mr-2" />
+                <div>
+                  <p className="text-yellow-700 text-sm font-medium">Complete Your Profile to See Requests</p>
+                  <p className="text-yellow-600 text-sm">Please update your address with city, state, and country information to see collection requests in your area.</p>
+                </div>
+              </div>
+              <button
+                onClick={handleOpenProfileSettings}
+                className="flex items-center text-yellow-700 hover:text-yellow-800 font-medium text-sm bg-yellow-100 hover:bg-yellow-200 px-3 py-2 rounded-lg transition-colors"
+              >
+                <Settings className="h-4 w-4 mr-1" />
+                Complete Profile
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Enhanced Location Status */}
         {locationError ? (
           <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
@@ -583,6 +667,21 @@ export const CollectorDashboard: React.FC = () => {
           </div>
         )}
 
+        {/* Location-based filtering info */}
+        {userLocation && (
+          <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+            <div className="flex items-center">
+              <CheckCircle className="h-5 w-5 text-blue-500 mr-2" />
+              <div>
+                <p className="text-blue-700 text-sm font-medium">Location-Based Filtering Active</p>
+                <p className="text-blue-600 text-sm">
+                  Showing requests from: {userLocation.city}, {userLocation.state}, {userLocation.country}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Stats Grid */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-6 sm:mb-8">
           <div className="bg-white p-4 sm:p-6 rounded-xl border border-gray-200">
@@ -634,7 +733,10 @@ export const CollectorDashboard: React.FC = () => {
             <div className="p-4 sm:p-6 border-b border-gray-200">
               <h3 className="text-lg font-semibold text-gray-900">Available Requests</h3>
               <p className="text-sm text-gray-600">
-                {currentLocation ? 'Requests within 4km of your location' : 'Enable location to see nearby requests'}
+                {userLocation 
+                  ? `Requests from ${userLocation.city}, ${userLocation.state}, ${userLocation.country}` 
+                  : 'Complete your profile to see location-based requests'
+                }
               </p>
             </div>
             
@@ -643,12 +745,26 @@ export const CollectorDashboard: React.FC = () => {
                 <div className="flex items-center justify-center py-8">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600"></div>
                 </div>
-              ) : !currentLocation ? (
+              ) : isProfileIncomplete ? (
+                <div className="text-center py-8">
+                  <Settings className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                  <h4 className="text-lg font-medium text-gray-900 mb-2">Complete Your Profile</h4>
+                  <p className="text-gray-600 text-sm mb-4">
+                    Please complete your profile with city, state, and country information to see collection requests in your area.
+                  </p>
+                  <button
+                    onClick={handleOpenProfileSettings}
+                    className="bg-green-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-green-700 transition-colors"
+                  >
+                    Complete Profile
+                  </button>
+                </div>
+              ) : !currentLocation && !userLocation ? (
                 <div className="text-center py-8">
                   <MapPin className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                   <h4 className="text-lg font-medium text-gray-900 mb-2">Location Required</h4>
                   <p className="text-gray-600 text-sm mb-4">
-                    Please enable location access to see collection requests near you.
+                    Please enable location access or complete your profile to see collection requests near you.
                   </p>
                   <button
                     onClick={refreshLocation}
@@ -670,7 +786,10 @@ export const CollectorDashboard: React.FC = () => {
                   <Trash2 className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                   <h4 className="text-lg font-medium text-gray-900 mb-2">No requests available</h4>
                   <p className="text-gray-600 text-sm">
-                    No collection requests within 4km of your location. Check back later for new opportunities.
+                    {userLocation 
+                      ? `No collection requests in ${userLocation.city}, ${userLocation.state}. Check back later for new opportunities.`
+                      : 'No collection requests in your area. Check back later for new opportunities.'
+                    }
                   </p>
                 </div>
               ) : (

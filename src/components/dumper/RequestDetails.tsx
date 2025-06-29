@@ -1,6 +1,8 @@
 import React from 'react';
 import { ArrowLeft, MapPin, Clock, Package, User, Phone, Mail, Star, MessageSquare, Calendar, Trash2, AlertTriangle, X, DollarSign } from 'lucide-react';
 import { useWasteRequests } from '../../hooks/useWasteRequests';
+import { useAuth } from '../../hooks/useAuth';
+import { formatPrice, parseCountryFromAddress } from '../../utils/currency';
 import type { WasteRequest } from '../../types';
 
 interface RequestDetailsProps {
@@ -9,9 +11,13 @@ interface RequestDetailsProps {
 }
 
 export const RequestDetails: React.FC<RequestDetailsProps> = ({ request, onClose }) => {
+  const { user } = useAuth();
   const { updateRequestStatus } = useWasteRequests();
   const [cancelling, setCancelling] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+
+  // Get user's country for currency formatting
+  const userCountry = parseCountryFromAddress(user?.address);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -53,14 +59,6 @@ export const RequestDetails: React.FC<RequestDetailsProps> = ({ request, onClose
       hour: '2-digit',
       minute: '2-digit',
     });
-  };
-
-  const formatPrice = (price: number | null) => {
-    if (price === null || price === undefined) return null;
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-    }).format(price);
   };
 
   const getStatusDescription = (status: string) => {
@@ -259,7 +257,7 @@ export const RequestDetails: React.FC<RequestDetailsProps> = ({ request, onClose
                     <DollarSign className="h-5 w-5 text-gray-400 mr-3 mt-0.5 flex-shrink-0" />
                     <div className="min-w-0 flex-1">
                       <p className="font-medium text-gray-900 text-sm sm:text-base">Offered Price</p>
-                      <p className="text-gray-600 text-sm sm:text-base">{formatPrice(request.price)}</p>
+                      <p className="text-gray-600 text-sm sm:text-base">{formatPrice(request.price, userCountry)}</p>
                     </div>
                   </div>
                 )}
@@ -439,7 +437,7 @@ export const RequestDetails: React.FC<RequestDetailsProps> = ({ request, onClose
                   <div className="flex justify-between items-start">
                     <span className="text-gray-600">Offered Price:</span>
                     <span className="font-medium text-gray-900 text-right">
-                      {formatPrice(request.price)}
+                      {formatPrice(request.price, userCountry)}
                     </span>
                   </div>
                 )}
