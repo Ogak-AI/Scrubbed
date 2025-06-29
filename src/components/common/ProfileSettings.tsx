@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ArrowLeft, User, Mail, Phone, MapPin, Save, AlertCircle, CheckCircle, Eye, Trash2, Calendar, Shield, Star } from 'lucide-react';
+import { ArrowLeft, User, Mail, Phone, MapPin, Save, AlertCircle, CheckCircle, Eye, Trash2, Calendar, Shield } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { getCountriesWithPopularFirst } from '../../utils/countries';
 
@@ -67,6 +67,9 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
       ...prev,
       fullName: lastName ? `${firstName} ${lastName}` : firstName
     }));
+    // Clear any existing errors when user makes changes
+    if (error) setError(null);
+    if (success) setSuccess(false);
   };
 
   const setLastName = (lastName: string) => {
@@ -75,6 +78,9 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
       ...prev,
       fullName: firstName ? `${firstName} ${lastName}` : lastName
     }));
+    // Clear any existing errors when user makes changes
+    if (error) setError(null);
+    if (success) setSuccess(false);
   };
 
   const formatAddress = (address: typeof formData.address) => {
@@ -139,15 +145,22 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    console.log('ProfileSettings: Form submission started');
+    console.log('ProfileSettings: Current form data:', formData);
+    console.log('ProfileSettings: Current user data:', user);
+    
     // Validate form before submission
     const validationErrors = validateForm();
     if (validationErrors.length > 0) {
-      setError(validationErrors.join('. '));
+      const errorMessage = validationErrors.join('. ');
+      console.log('ProfileSettings: Validation failed:', errorMessage);
+      setError(errorMessage);
       return;
     }
 
     // Check if there are actually changes to save
     if (!hasChanges()) {
+      console.log('ProfileSettings: No changes detected');
       setError('No changes detected. Please modify your information before saving.');
       return;
     }
@@ -157,29 +170,24 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
     setSuccess(false);
 
     try {
-      console.log('ProfileSettings: Starting update with data:', {
+      const updateData = {
         fullName: formData.fullName.trim(),
-        phone: formData.phone.trim() || null,
+        phone: formData.phone.trim() || null, // Convert empty string to null
         address: formatAddress(formData.address),
-      });
+      };
 
-      // Call updateProfile with proper data structure
-      await updateProfile({
-        fullName: formData.fullName.trim(),
-        phone: formData.phone.trim() || null,
-        address: formatAddress(formData.address),
-      });
+      console.log('ProfileSettings: Calling updateProfile with:', updateData);
+
+      await updateProfile(updateData);
 
       console.log('ProfileSettings: Profile updated successfully');
       setSuccess(true);
-      
-      // Clear error state on success
       setError(null);
       
-      // Show success message for 2 seconds, then close
+      // Show success message for 3 seconds, then close
       setTimeout(() => {
         onClose();
-      }, 2000);
+      }, 3000);
       
     } catch (err: unknown) {
       console.error('ProfileSettings: Error updating profile:', err);
@@ -193,6 +201,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
 
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
+    // Clear any existing errors when user makes changes
     if (error) setError(null);
     if (success) setSuccess(false);
   };
@@ -202,6 +211,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
       ...prev,
       address: { ...prev.address, [field]: value }
     }));
+    // Clear any existing errors when user makes changes
     if (error) setError(null);
     if (success) setSuccess(false);
   };
@@ -259,6 +269,10 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
     }
     
     return 'Address incomplete';
+  };
+
+  const dismissError = () => {
+    setError(null);
   };
 
   return (
@@ -435,18 +449,28 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
                 {/* Success/Error Messages */}
                 {success && (
                   <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
-                    <div className="flex items-center">
-                      <CheckCircle className="h-5 w-5 text-green-500 mr-2" />
-                      <p className="text-green-700 text-sm font-medium">Profile updated successfully! Changes have been applied.</p>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center">
+                        <CheckCircle className="h-5 w-5 text-green-500 mr-2" />
+                        <p className="text-green-700 text-sm font-medium">Profile updated successfully! Changes have been applied.</p>
+                      </div>
                     </div>
                   </div>
                 )}
 
                 {error && (
                   <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
-                    <div className="flex items-center">
-                      <AlertCircle className="h-5 w-5 text-red-500 mr-2" />
-                      <p className="text-red-600 text-sm">{error}</p>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center">
+                        <AlertCircle className="h-5 w-5 text-red-500 mr-2" />
+                        <p className="text-red-600 text-sm">{error}</p>
+                      </div>
+                      <button
+                        onClick={dismissError}
+                        className="text-red-500 hover:text-red-700 transition-colors"
+                      >
+                        ×
+                      </button>
                     </div>
                   </div>
                 )}
