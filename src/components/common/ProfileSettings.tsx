@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ArrowLeft, User, Mail, Phone, MapPin, Save, AlertCircle, CheckCircle, Eye, Trash2 } from 'lucide-react';
+import { ArrowLeft, User, Mail, Phone, MapPin, Save, AlertCircle, CheckCircle, Eye, Trash2, Calendar, Shield, Star } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { getCountriesWithPopularFirst } from '../../utils/countries';
 
@@ -87,7 +87,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
     });
   };
 
-  // CRITICAL FIX: Enhanced form validation that allows optional phone
+  // Enhanced form validation that allows optional phone
   const validateForm = () => {
     const errors: string[] = [];
     
@@ -111,7 +111,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
       errors.push('Please enter your ZIP code');
     }
 
-    // CRITICAL FIX: Only validate phone format if phone is provided (not empty)
+    // Only validate phone format if phone is provided (not empty)
     const phoneValue = formData.phone.trim();
     if (phoneValue && !/^\+?[\d\s\-\(\)]+$/.test(phoneValue)) {
       errors.push('Please enter a valid phone number format');
@@ -120,7 +120,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
     return errors;
   };
 
-  // CRITICAL FIX: Check if form has changes (including when phone is removed)
+  // Check if form has changes (including when phone is removed)
   const hasChanges = () => {
     const currentAddress = formatAddress(formData.address);
     const originalAddress = user?.address || '';
@@ -139,14 +139,14 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // CRITICAL FIX: Validate form before submission
+    // Validate form before submission
     const validationErrors = validateForm();
     if (validationErrors.length > 0) {
       setError(validationErrors.join('. '));
       return;
     }
 
-    // CRITICAL FIX: Check if there are actually changes to save
+    // Check if there are actually changes to save
     if (!hasChanges()) {
       setError('No changes detected. Please modify your information before saving.');
       return;
@@ -159,14 +159,14 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
     try {
       console.log('ProfileSettings: Starting update with data:', {
         fullName: formData.fullName.trim(),
-        phone: formData.phone.trim() || null, // CRITICAL FIX: Convert empty string to null
+        phone: formData.phone.trim() || null,
         address: formatAddress(formData.address),
       });
 
-      // CRITICAL FIX: Call updateProfile with proper data structure
+      // Call updateProfile with proper data structure
       await updateProfile({
         fullName: formData.fullName.trim(),
-        phone: formData.phone.trim() || null, // CRITICAL FIX: Handle empty phone as null
+        phone: formData.phone.trim() || null,
         address: formatAddress(formData.address),
       });
 
@@ -213,8 +213,6 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
 
     setDeleteLoading(true);
     try {
-      // Note: In a real implementation, you would call a backend API to delete the account
-      // For now, we'll just sign out the user
       alert('Account deletion is not yet implemented. Please contact support to delete your account.');
       await signOut();
     } catch (err: unknown) {
@@ -238,6 +236,29 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
       default:
         return 'Unknown Account Type';
     }
+  };
+
+  // Helper function to format address for display
+  const getFormattedAddress = () => {
+    if (!user?.address) return 'No address provided';
+    
+    try {
+      const parsed = JSON.parse(user.address);
+      if (typeof parsed === 'object') {
+        const parts = [];
+        if (parsed.street) parts.push(parsed.street);
+        if (parsed.city) parts.push(parsed.city);
+        if (parsed.state) parts.push(parsed.state);
+        if (parsed.zipCode) parts.push(parsed.zipCode);
+        if (parsed.country && parsed.country !== 'United States') parts.push(parsed.country);
+        return parts.join(', ') || 'Address incomplete';
+      }
+    } catch {
+      // If parsing fails, return the raw address
+      return user.address;
+    }
+    
+    return 'Address incomplete';
   };
 
   return (
@@ -290,6 +311,109 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
                 </button>
               </nav>
             </div>
+
+            {/* Profile Preview Card */}
+            <div className="mt-6 bg-white rounded-xl border border-gray-200 p-4">
+              <h3 className="text-sm font-medium text-gray-900 mb-3 flex items-center">
+                <Eye className="h-4 w-4 mr-2" />
+                Profile Preview
+              </h3>
+              
+              <div className="space-y-3 text-xs">
+                {/* User Avatar & Name */}
+                <div className="flex items-center space-x-3 pb-3 border-b border-gray-100">
+                  <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
+                    <User className="h-5 w-5 text-green-600" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium text-gray-900 truncate">
+                      {user?.fullName || 'Name not set'}
+                    </p>
+                    <p className="text-gray-500 truncate">{getAccountTypeDisplay()}</p>
+                  </div>
+                </div>
+
+                {/* Contact Information */}
+                <div className="space-y-2">
+                  <div className="flex items-start space-x-2">
+                    <Mail className="h-3 w-3 text-gray-400 mt-0.5 flex-shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-gray-600 break-all">{user?.email}</p>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-start space-x-2">
+                    <Phone className="h-3 w-3 text-gray-400 mt-0.5 flex-shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-gray-600">
+                        {user?.phone || 'No phone number'}
+                      </p>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-start space-x-2">
+                    <MapPin className="h-3 w-3 text-gray-400 mt-0.5 flex-shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-gray-600 break-words">
+                        {getFormattedAddress()}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Account Status */}
+                <div className="pt-3 border-t border-gray-100 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-500">Email Status:</span>
+                    <div className="flex items-center">
+                      {user?.emailVerified ? (
+                        <>
+                          <CheckCircle className="h-3 w-3 text-green-500 mr-1" />
+                          <span className="text-green-600 font-medium">Verified</span>
+                        </>
+                      ) : (
+                        <>
+                          <AlertCircle className="h-3 w-3 text-red-500 mr-1" />
+                          <span className="text-red-600 font-medium">Unverified</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-500">Phone Status:</span>
+                    <div className="flex items-center">
+                      {user?.phoneVerified ? (
+                        <>
+                          <CheckCircle className="h-3 w-3 text-green-500 mr-1" />
+                          <span className="text-green-600 font-medium">Verified</span>
+                        </>
+                      ) : (
+                        <>
+                          <AlertCircle className="h-3 w-3 text-yellow-500 mr-1" />
+                          <span className="text-yellow-600 font-medium">Unverified</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {user?.createdAt && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-500">Member Since:</span>
+                      <div className="flex items-center">
+                        <Calendar className="h-3 w-3 text-gray-400 mr-1" />
+                        <span className="text-gray-600 font-medium">
+                          {new Date(user.createdAt).toLocaleDateString('en-US', { 
+                            month: 'short', 
+                            year: 'numeric' 
+                          })}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* Main Content */}
@@ -313,7 +437,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
                   <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
                     <div className="flex items-center">
                       <CheckCircle className="h-5 w-5 text-green-500 mr-2" />
-                      <p className="text-green-700 text-sm font-medium">Profile updated successfully! Changes will be applied shortly.</p>
+                      <p className="text-green-700 text-sm font-medium">Profile updated successfully! Changes have been applied.</p>
                     </div>
                   </div>
                 )}
@@ -389,7 +513,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
                       Account Type
                     </label>
                     <div className="relative">
-                      <User className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                      <Shield className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
                       <input
                         type="text"
                         value={getAccountTypeDisplay()}
@@ -402,7 +526,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
                     </p>
                   </div>
 
-                  {/* Phone - CRITICAL FIX: Made truly optional */}
+                  {/* Phone */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       Phone Number (Optional)
@@ -422,10 +546,10 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
                     </p>
                   </div>
 
-                  {/* Billing Address */}
+                  {/* Address */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-4">
-                      Billing Address *
+                      Address *
                     </label>
                     
                     <div className="space-y-4">
@@ -530,8 +654,8 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
                       </div>
                       <div>
                         <span className="text-gray-600">Phone Verified:</span>
-                        <p className={`font-medium ${user?.phoneVerified ? 'text-green-600' : 'text-red-600'}`}>
-                          {user?.phoneVerified ? 'Verified' : 'Not Verified'}
+                        <p className={`font-medium ${user?.phoneVerified ? 'text-green-600' : 'text-yellow-600'}`}>
+                          {user?.phoneVerified ? 'Verified' : user?.phone ? 'Not Verified' : 'No Phone Number'}
                         </p>
                       </div>
                       <div>
@@ -572,7 +696,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
                     </button>
                   </div>
                   
-                  {/* CRITICAL FIX: Show helpful message when no changes detected */}
+                  {/* Show helpful message when no changes detected */}
                   {!hasChanges() && !loading && (
                     <div className="text-center">
                       <p className="text-sm text-gray-500">
