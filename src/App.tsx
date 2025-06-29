@@ -37,7 +37,7 @@ const AppContent: React.FC = () => {
     );
   }
 
-  // CRITICAL FIX: More robust and detailed profile completion check
+  // CRITICAL FIX: Enhanced profile completion validation
   const isValidFullName = (name: string | null): boolean => {
     if (!name) return false;
     const trimmed = name.trim();
@@ -68,28 +68,29 @@ const AppContent: React.FC = () => {
     return false;
   };
 
+  // CRITICAL FIX: Proper phone validation - only check if phone exists and has content
+  const hasPhoneNumber = user.phone && user.phone.trim().length > 0;
+  const needsPhoneVerification = hasPhoneNumber && !verification.phoneVerified;
+
   const hasValidFullName = isValidFullName(user.fullName);
   const hasValidAddress = isValidAddress(user.address);
   const needsProfileCompletion = !hasValidFullName || !hasValidAddress;
   
-  // Check if user needs phone verification (only if they have a phone number)
-  const needsPhoneVerification = user.phone && user.phone.trim().length > 0 && !verification.phoneVerified;
-  
-  console.log('App.tsx Detailed Profile Check:', {
+  console.log('App.tsx FINAL Profile Check:', {
     fullName: user.fullName,
     hasValidFullName,
-    fullNameValid: isValidFullName(user.fullName),
     address: user.address,
     hasValidAddress,
-    addressValid: isValidAddress(user.address),
     needsProfileCompletion,
     phone: user.phone,
+    hasPhoneNumber,
     phoneVerified: verification.phoneVerified,
     needsPhoneVerification,
     finalDecision: needsProfileCompletion || needsPhoneVerification ? 'SHOW_VERIFICATION' : 'SHOW_DASHBOARD'
   });
   
-  // If user needs profile completion OR phone verification, show verification page
+  // CRITICAL FIX: Only show verification if profile is incomplete OR phone needs verification
+  // If phone is empty/null, skip phone verification entirely
   if (needsProfileCompletion || needsPhoneVerification) {
     console.log('Showing verification page - Profile incomplete or phone verification needed');
     return <VerificationPage />;

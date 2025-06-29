@@ -182,6 +182,7 @@ export const VerificationPage: React.FC = () => {
       const updateData = {
         fullName: trimmedFullName,
         userType: profileData.userType,
+        // CRITICAL FIX: Only include phone if it has content, otherwise set to null
         phone: profileData.phone.trim() || null,
         address: formatAddress({
           street: trimmedStreet,
@@ -214,7 +215,9 @@ export const VerificationPage: React.FC = () => {
     }
   };
 
-  const isFullyVerified = verification.emailVerified && (!profileData.phone || verification.phoneVerified);
+  // CRITICAL FIX: Enhanced verification check - only require phone verification if phone exists
+  const hasPhoneNumber = profileData.phone && profileData.phone.trim().length > 0;
+  const isFullyVerified = verification.emailVerified && (!hasPhoneNumber || verification.phoneVerified);
 
   if (showProfileSetup) {
     return (
@@ -291,7 +294,7 @@ export const VerificationPage: React.FC = () => {
                 />
               </div>
               <p className="mt-1 text-xs text-gray-500">
-                Include country code. Phone verification will be required if provided.
+                Include country code. Phone verification will be required if provided. Leave empty to skip phone verification.
               </p>
             </div>
 
@@ -458,8 +461,8 @@ export const VerificationPage: React.FC = () => {
           </div>
         )}
 
-        {/* Phone Verification */}
-        {profileData.phone && !isFullyVerified && (
+        {/* Phone Verification - Only show if user has a phone number */}
+        {hasPhoneNumber && !isFullyVerified && (
           <div className="border border-gray-200 rounded-lg p-4 mb-6">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center">
@@ -553,7 +556,7 @@ export const VerificationPage: React.FC = () => {
           </div>
         )}
 
-        {!isFullyVerified && profileData.phone && (
+        {!isFullyVerified && hasPhoneNumber && (
           <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
             <div className="flex items-center">
               <AlertCircle className="h-5 w-5 text-yellow-500 mr-2" />
@@ -561,6 +564,19 @@ export const VerificationPage: React.FC = () => {
             </div>
             <p className="text-yellow-700 text-sm mt-1">
               Please verify your phone number to access all features.
+            </p>
+          </div>
+        )}
+
+        {/* Show success message if no phone number provided */}
+        {!hasPhoneNumber && (
+          <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+            <div className="flex items-center">
+              <CheckCircle className="h-5 w-5 text-blue-500 mr-2" />
+              <span className="text-blue-800 font-medium">Profile Complete!</span>
+            </div>
+            <p className="text-blue-700 text-sm mt-1">
+              Your profile is complete. You can add a phone number later in settings if needed.
             </p>
           </div>
         )}
