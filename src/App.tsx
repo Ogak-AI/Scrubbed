@@ -42,11 +42,13 @@ const AppContent: React.FC = () => {
   console.log('Current user:', user);
   console.log('User type:', user.userType);
 
-  // MANDATORY PROFILE COMPLETION CHECK - Check if profile is incomplete
-  const needsProfileCompletion = !user.fullName || !user.address;
+  // CRITICAL FIX: More robust profile completion check
+  const needsProfileCompletion = !user.fullName?.trim() || !user.address?.trim();
   console.log('Profile completion check:', {
     fullName: user.fullName,
+    fullNameTrimmed: user.fullName?.trim(),
     address: user.address,
+    addressTrimmed: user.address?.trim(),
     needsProfileCompletion
   });
   

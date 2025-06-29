@@ -626,40 +626,53 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   };
 
   const updateProfile = async (updates: Partial<User>) => {
-    if (!user) return;
+    if (!user) {
+      throw new Error('User not authenticated');
+    }
 
     try {
       console.log('Updating profile with:', updates);
       
-      const { _data, error: checkError } = await supabase
+      // First, check if profile exists
+      const { data: existingProfile, error: checkError } = await supabase
         .from('profiles')
-        .select('id')
+        .select('*')
         .eq('id', user.id)
         .single();
 
       if (checkError && checkError.code === 'PGRST116') {
+        // Profile doesn't exist, create it
         console.log('Creating profile during update');
-        const { error: createError } = await supabase
+        const profileData = {
+          id: user.id,
+          email: user.email,
+          full_name: updates.fullName || user.fullName,
+          user_type: updates.userType || user.userType,
+          phone: updates.phone || user.phone,
+          address: updates.address || user.address,
+          email_verified: user.emailVerified,
+          phone_verified: user.phoneVerified,
+        };
+
+        const { data: newProfile, error: createError } = await supabase
           .from('profiles')
-          .insert({
-            id: user.id,
-            email: user.email,
-            full_name: updates.fullName || user.fullName,
-            user_type: updates.userType || user.userType,
-            phone: updates.phone || user.phone,
-            address: updates.address || user.address,
-            email_verified: user.emailVerified,
-            phone_verified: user.phoneVerified,
-          });
+          .insert(profileData)
+          .select()
+          .single();
 
         if (createError) {
           console.error('Error creating profile during update:', createError);
-          throw createError;
+          throw new Error(`Failed to create profile: ${createError.message}`);
         }
+
+        console.log('Profile created successfully:', newProfile);
       } else if (checkError) {
-        throw checkError;
+        console.error('Error checking profile:', checkError);
+        throw new Error(`Profile check failed: ${checkError.message}`);
       } else {
-        const { error } = await supabase
+        // Profile exists, update it
+        console.log('Updating existing profile');
+        const { data: updatedProfile, error: updateError } = await supabase
           .from('profiles')
           .update({
             full_name: updates.fullName,
@@ -668,15 +681,29 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             address: updates.address,
             updated_at: new Date().toISOString(),
           })
-          .eq('id', user.id);
+          .eq('id', user.id)
+          .select()
+          .single();
 
-        if (error) throw error;
+        if (updateError) {
+          console.error('Error updating profile:', updateError);
+          throw new Error(`Failed to update profile: ${updateError.message}`);
+        }
+
+        console.log('Profile updated successfully:', updatedProfile);
       }
 
-      const updatedUser = { ...user, ...updates };
-      console.log('Updated user state:', updatedUser);
+      // Update local user state immediately
+      const updatedUser = { ...user, ...updates, updatedAt: new Date().toISOString() };
+      console.log('Setting updated user state:', updatedUser);
       setUser(updatedUser);
-    } catch (error) {
+
+      // Force a re-fetch to ensure we have the latest data
+      setTimeout(() => {
+        fetchUserProfile(user.id);
+      }, 100);
+
+    } catch (error: unknown) {
       console.error('Error updating profile:', error);
       throw error;
     }

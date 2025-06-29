@@ -35,10 +35,12 @@ export const VerificationPage: React.FC = () => {
   // Check if user needs to complete profile setup
   useEffect(() => {
     if (user) {
-      const needsProfileCompletion = !user.fullName || !user.address;
-      console.log('Profile completion check:', {
+      const needsProfileCompletion = !user.fullName?.trim() || !user.address?.trim();
+      console.log('Profile completion check in VerificationPage:', {
         fullName: user.fullName,
+        fullNameTrimmed: user.fullName?.trim(),
         address: user.address,
+        addressTrimmed: user.address?.trim(),
         needsProfileCompletion
       });
       setShowProfileSetup(needsProfileCompletion);
@@ -134,9 +136,8 @@ export const VerificationPage: React.FC = () => {
       
       console.log('Profile updated successfully');
       
-      // IMPORTANT: Don't manually set showProfileSetup to false
-      // Let the useEffect in App.tsx handle the redirect by re-evaluating the user state
-      // The updateProfile call will trigger a re-render with updated user data
+      // The App.tsx component will automatically redirect to the dashboard
+      // when it detects that the profile is complete
       
     } catch (error: unknown) {
       console.error('Error updating profile:', error);
