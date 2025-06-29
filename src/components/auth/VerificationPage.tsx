@@ -133,7 +133,10 @@ export const VerificationPage: React.FC = () => {
       await updateProfile(updateData);
       
       console.log('Profile updated successfully');
-      setShowProfileSetup(false);
+      
+      // IMPORTANT: Don't manually set showProfileSetup to false
+      // Let the useEffect in App.tsx handle the redirect by re-evaluating the user state
+      // The updateProfile call will trigger a re-render with updated user data
       
     } catch (error: unknown) {
       console.error('Error updating profile:', error);

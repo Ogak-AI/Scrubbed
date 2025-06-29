@@ -42,14 +42,28 @@ const AppContent: React.FC = () => {
   console.log('Current user:', user);
   console.log('User type:', user.userType);
 
-  // MANDATORY PROFILE COMPLETION CHECK
+  // MANDATORY PROFILE COMPLETION CHECK - Check if profile is incomplete
   const needsProfileCompletion = !user.fullName || !user.address;
+  console.log('Profile completion check:', {
+    fullName: user.fullName,
+    address: user.address,
+    needsProfileCompletion
+  });
   
   // Check if user needs phone verification (only if they have a phone number)
   const needsVerification = user.phone && !verification.phoneVerified;
+  console.log('Phone verification check:', {
+    phone: user.phone,
+    phoneVerified: verification.phoneVerified,
+    needsVerification
+  });
   
   // If user needs profile completion OR phone verification, show verification page
   if (needsProfileCompletion || needsVerification) {
+    console.log('Showing verification page for:', {
+      needsProfileCompletion,
+      needsVerification
+    });
     return <VerificationPage />;
   }
 
@@ -74,6 +88,7 @@ const AppContent: React.FC = () => {
   };
 
   // User is authenticated and profile is complete - show their dashboard
+  console.log('User is fully authenticated and verified, showing dashboard');
   return (
     <Router>
       <Routes>
@@ -86,8 +101,8 @@ const AppContent: React.FC = () => {
         <Route path="/collector" element={<CollectorDashboard />} />
         <Route path="/admin" element={<AdminDashboard />} />
         
-        {/* Verification route */}
-        <Route path="/verify" element={<VerificationPage />} />
+        {/* Verification route - redirect to dashboard if already verified */}
+        <Route path="/verify" element={<Navigate to="/" replace />} />
         
         {/* Redirect any auth routes to dashboard if already logged in */}
         <Route path="/auth/*" element={<Navigate to="/" replace />} />
