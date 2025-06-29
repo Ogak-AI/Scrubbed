@@ -6,11 +6,10 @@ export default defineConfig({
   plugins: [react()],
   build: {
     outDir: 'dist',
-    sourcemap: false, // Disable sourcemaps for production
+    sourcemap: false,
     rollupOptions: {
       output: {
         manualChunks: (id) => {
-          // More aggressive chunking for better performance
           if (id.includes('node_modules')) {
             if (id.includes('react') || id.includes('react-dom')) {
               return 'react-vendor';
@@ -27,7 +26,6 @@ export default defineConfig({
             return 'vendor';
           }
           
-          // Separate chunks for different parts of the app
           if (id.includes('src/contexts')) {
             return 'contexts';
           }
@@ -51,7 +49,6 @@ export default defineConfig({
     },
     target: 'es2020',
     minify: 'esbuild',
-    // PERFORMANCE: Optimize chunk size
     chunkSizeWarningLimit: 1000,
   },
   optimizeDeps: {
@@ -60,19 +57,24 @@ export default defineConfig({
   },
   esbuild: {
     target: 'es2020',
-    // PERFORMANCE: Remove console logs in production
     drop: process.env.NODE_ENV === 'production' ? ['console', 'debugger'] : [],
   },
-  // PERFORMANCE: Enable compression and optimize dev server
   server: {
     hmr: {
-      overlay: false, // Disable error overlay for better performance
+      overlay: false,
+      port: 24678,
     },
-    // CRITICAL FIX: Configure history API fallback for clean URLs
+    host: true,
+    port: 5173,
+    strictPort: false,
     historyApiFallback: true,
   },
-  // CRITICAL FIX: Configure preview server for clean URLs
   preview: {
     historyApiFallback: true,
+    port: 4173,
+    strictPort: false,
+  },
+  define: {
+    global: 'globalThis',
   },
 });
