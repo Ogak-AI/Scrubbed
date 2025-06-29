@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { ArrowLeft, User, Mail, Phone, MapPin, Save, AlertCircle, CheckCircle, Eye, Trash2 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
+import { getCountriesWithPopularFirst } from '../../utils/countries';
 
 interface ProfileSettingsProps {
   onClose: () => void;
@@ -14,6 +15,8 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
   const [showPersonalInfo, setShowPersonalInfo] = useState(true);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  
+  const countries = getCountriesWithPopularFirst();
   
   const [formData, setFormData] = useState({
     fullName: user?.fullName || '',
@@ -434,13 +437,11 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
                             required
                             className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
                           >
-                            <option value="United States">United States</option>
-                            <option value="Canada">Canada</option>
-                            <option value="United Kingdom">United Kingdom</option>
-                            <option value="Australia">Australia</option>
-                            <option value="Germany">Germany</option>
-                            <option value="France">France</option>
-                            <option value="Other">Other</option>
+                            {countries.map((country) => (
+                              <option key={country} value={country}>
+                                {country}
+                              </option>
+                            ))}
                           </select>
                         </div>
                       </div>

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Phone, CheckCircle, AlertCircle, RefreshCw, MessageSquare, User, MapPin, Trash2 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
+import { getCountriesWithPopularFirst } from '../../utils/countries';
 
 export const VerificationPage: React.FC = () => {
   const { user, verification, sendPhoneVerification, verifyPhoneCode, updateProfile } = useAuth();
@@ -19,6 +20,8 @@ export const VerificationPage: React.FC = () => {
       country: 'United States',
     },
   });
+
+  const countries = getCountriesWithPopularFirst();
 
   useEffect(() => {
     if (countdown > 0) {
@@ -280,13 +283,11 @@ export const VerificationPage: React.FC = () => {
                       required
                       className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
                     >
-                      <option value="United States">United States</option>
-                      <option value="Canada">Canada</option>
-                      <option value="United Kingdom">United Kingdom</option>
-                      <option value="Australia">Australia</option>
-                      <option value="Germany">Germany</option>
-                      <option value="France">France</option>
-                      <option value="Other">Other</option>
+                      {countries.map((country) => (
+                        <option key={country} value={country}>
+                          {country}
+                        </option>
+                      ))}
                     </select>
                   </div>
                 </div>
