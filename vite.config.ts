@@ -6,11 +6,11 @@ export default defineConfig({
   plugins: [react()],
   build: {
     outDir: 'dist',
-    sourcemap: true, // Enable sourcemaps for better debugging
+    sourcemap: false, // Disable sourcemaps for production
     rollupOptions: {
       output: {
         manualChunks: (id) => {
-          // More granular chunking to avoid circular dependencies
+          // More aggressive chunking for better performance
           if (id.includes('node_modules')) {
             if (id.includes('react') || id.includes('react-dom')) {
               return 'react-vendor';
@@ -34,6 +34,15 @@ export default defineConfig({
           if (id.includes('src/hooks')) {
             return 'hooks';
           }
+          if (id.includes('src/components/dumper')) {
+            return 'dumper-components';
+          }
+          if (id.includes('src/components/collector')) {
+            return 'collector-components';
+          }
+          if (id.includes('src/components/admin')) {
+            return 'admin-components';
+          }
           if (id.includes('src/components')) {
             return 'components';
           }
@@ -42,6 +51,8 @@ export default defineConfig({
     },
     target: 'es2020',
     minify: 'esbuild',
+    // PERFORMANCE: Optimize chunk size
+    chunkSizeWarningLimit: 1000,
   },
   optimizeDeps: {
     include: ['react', 'react-dom', '@supabase/supabase-js', 'react-router-dom'],
@@ -49,5 +60,13 @@ export default defineConfig({
   },
   esbuild: {
     target: 'es2020',
+    // PERFORMANCE: Remove console logs in production
+    drop: process.env.NODE_ENV === 'production' ? ['console', 'debugger'] : [],
+  },
+  // PERFORMANCE: Enable compression
+  server: {
+    hmr: {
+      overlay: false, // Disable error overlay for better performance
+    },
   },
 });

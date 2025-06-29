@@ -1,6 +1,6 @@
-import React, { createContext, useEffect, useState, ReactNode, useCallback } from 'react';
+import React, { createContext, useEffect, useState, ReactNode, useCallback, useMemo } from 'react';
 import { User as SupabaseUser, Session, PostgrestSingleResponse } from '@supabase/supabase-js';
-import { supabase } from '../lib/supabase';
+import { supabase, getCachedData, setCachedData, clearCache } from '../lib/supabase';
 import type { User, VerificationState } from '../types';
 import type { Database } from '../types/database';
 
@@ -37,34 +37,28 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     error: null,
   });
 
-  // Get the correct redirect URL - always use custom domain
-  const getRedirectUrl = () => {
-    return 'https://scrubbed.online';
-  };
+  // PERFORMANCE: Memoize redirect URL
+  const redirectUrl = useMemo(() => 'https://scrubbed.online', []);
 
-  // Extract user type from URL parameters after OAuth redirect
-  const extractUserTypeFromUrl = (): string | null => {
+  // PERFORMANCE: Memoize user type extraction functions
+  const extractUserTypeFromUrl = useCallback((): string | null => {
     if (typeof window === 'undefined') return null;
     
     try {
-      // Check URL hash for access_token and state
       const hash = window.location.hash;
       if (hash.includes('access_token') && hash.includes('state=')) {
         const stateMatch = hash.match(/state=([^&]+)/);
         if (stateMatch) {
           const decodedState = decodeURIComponent(stateMatch[1]);
           const stateData = JSON.parse(atob(decodedState));
-          console.log('Extracted OAuth state data:', stateData);
           return stateData.user_type || null;
         }
       }
       
-      // Check URL search params as fallback
       const urlParams = new URLSearchParams(window.location.search);
       const state = urlParams.get('state');
       if (state) {
         const stateData = JSON.parse(atob(state));
-        console.log('Extracted state data from search params:', stateData);
         return stateData.user_type || null;
       }
     } catch (error) {
@@ -72,151 +66,52 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
     
     return null;
-  };
+  }, []);
 
-  // Store user type in localStorage temporarily during OAuth flow
-  const storeUserTypeForOAuth = (userType: string) => {
+  const storeUserTypeForOAuth = useCallback((userType: string) => {
     if (typeof window !== 'undefined') {
       localStorage.setItem('pending_user_type', userType);
-      console.log('Stored pending user type:', userType);
     }
-  };
+  }, []);
 
-  const getPendingUserType = (): string | null => {
+  const getPendingUserType = useCallback((): string | null => {
     if (typeof window !== 'undefined') {
       const pendingType = localStorage.getItem('pending_user_type');
       if (pendingType) {
-        localStorage.removeItem('pending_user_type'); // Clean up after use
-        console.log('Retrieved pending user type:', pendingType);
+        localStorage.removeItem('pending_user_type');
         return pendingType;
       }
     }
     return null;
-  };
+  }, []);
 
-  // Send welcome email function
-  const sendWelcomeEmail = async (userEmail: string, userName: string, userType: 'dumper' | 'collector') => {
-    try {
-      const emailContent = {
-        to: userEmail,
-        subject: 'Welcome to Scrubbed - Your Google Account is Connected!',
-        html: `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-            <div style="text-align: center; margin-bottom: 30px;">
-              <h1 style="color: #16a34a; margin: 0;">Welcome to Scrubbed!</h1>
-              <p style="color: #6b7280; margin: 10px 0;">Smart Waste Management Made Simple</p>
-            </div>
-            
-            <div style="background: #f9fafb; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
-              <h2 style="color: #374151; margin-top: 0;">Hi ${userName}!</h2>
-              <p style="color: #6b7280; line-height: 1.6;">
-                Your Google account has been successfully connected to <strong>scrubbed.online</strong>. 
-                You're now ready to ${userType === 'dumper' ? 'request waste collection services' : 'start earning money as a waste collector'}!
-              </p>
-            </div>
+  // PERFORMANCE: Optimized display name function
+  const getDisplayName = useCallback((supabaseUser: SupabaseUser): string => {
+    return supabaseUser.user_metadata?.full_name ||
+           supabaseUser.user_metadata?.name ||
+           (supabaseUser.user_metadata?.given_name && supabaseUser.user_metadata?.family_name 
+             ? `${supabaseUser.user_metadata.given_name} ${supabaseUser.user_metadata.family_name}`
+             : supabaseUser.user_metadata?.given_name) ||
+           (supabaseUser.email ? supabaseUser.email.split('@')[0].charAt(0).toUpperCase() + supabaseUser.email.split('@')[0].slice(1) : 'User');
+  }, []);
 
-            <div style="margin-bottom: 20px;">
-              <h3 style="color: #374151;">What's next?</h3>
-              <ul style="color: #6b7280; line-height: 1.6;">
-                ${userType === 'dumper' ? `
-                  <li>Create your first waste collection request</li>
-                  <li>Get matched with professional collectors in your area</li>
-                  <li>Track your collections in real-time</li>
-                  <li>Rate and review your collectors</li>
-                ` : `
-                  <li>Complete your collector profile setup</li>
-                  <li>Browse available collection requests</li>
-                  <li>Start accepting jobs and earning money</li>
-                  <li>Build your reputation with customer ratings</li>
-                `}
-              </ul>
-            </div>
-
-            <div style="text-align: center; margin: 30px 0;">
-              <a href="https://scrubbed.online" 
-                 style="background: #16a34a; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">
-                Get Started Now
-              </a>
-            </div>
-
-            <div style="border-top: 1px solid #e5e7eb; padding-top: 20px; text-align: center; color: #9ca3af; font-size: 14px;">
-              <p>This email was sent because you connected your Google account to Scrubbed.</p>
-              <p>If you didn't create this account, please ignore this email.</p>
-              <p>&copy; 2025 Scrubbed. All rights reserved.</p>
-            </div>
-          </div>
-        `
-      };
-
-      try {
-        await supabase.functions.invoke('send-welcome-email', {
-          body: emailContent
-        });
-        console.log('Welcome email sent successfully');
-      } catch {
-        console.log('Welcome email service not configured, skipping email send');
-      }
-    } catch (error) {
-      console.error('Error sending welcome email:', error);
-    }
-  };
-
-  // Helper function to get display name from Google user data
-  const getDisplayName = (supabaseUser: SupabaseUser): string => {
-    if (supabaseUser.user_metadata?.full_name) {
-      return supabaseUser.user_metadata.full_name;
-    }
-    
-    if (supabaseUser.user_metadata?.name) {
-      return supabaseUser.user_metadata.name;
-    }
-    
-    const firstName = supabaseUser.user_metadata?.given_name || supabaseUser.user_metadata?.first_name;
-    const lastName = supabaseUser.user_metadata?.family_name || supabaseUser.user_metadata?.last_name;
-    
-    if (firstName && lastName) {
-      return `${firstName} ${lastName}`;
-    }
-    
-    if (firstName) {
-      return firstName;
-    }
-    
-    if (supabaseUser.email) {
-      const emailUsername = supabaseUser.email.split('@')[0];
-      return emailUsername.charAt(0).toUpperCase() + emailUsername.slice(1);
-    }
-    
-    return 'User';
-  };
-
+  // PERFORMANCE: Memoized basic user creation
   const createBasicUser = useCallback((userId: string): User => {
-    // CRITICAL FIX: Get user type from multiple sources
-    let userType: 'dumper' | 'collector' = 'dumper'; // Default fallback
+    let userType: 'dumper' | 'collector' = 'dumper';
     
-    // 1. Check session user metadata
     if (session?.user?.user_metadata?.user_type) {
       userType = session.user.user_metadata.user_type;
-      console.log('User type from session metadata:', userType);
-    }
-    // 2. Check for pending user type from OAuth flow
-    else {
+    } else {
       const pendingType = getPendingUserType();
       if (pendingType === 'collector' || pendingType === 'dumper') {
         userType = pendingType as 'dumper' | 'collector';
-        console.log('User type from pending OAuth:', userType);
-      }
-      // 3. Try to extract from URL
-      else {
+      } else {
         const urlType = extractUserTypeFromUrl();
         if (urlType === 'collector' || urlType === 'dumper') {
           userType = urlType as 'dumper' | 'collector';
-          console.log('User type from URL:', urlType);
         }
       }
     }
-    
-    console.log('Final determined user type:', userType);
     
     return {
       id: userId,
@@ -230,55 +125,41 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
-  }, [session?.user]);
+  }, [session?.user, getPendingUserType, extractUserTypeFromUrl, getDisplayName]);
 
+  // PERFORMANCE: Optimized profile existence check with caching
   const ensureProfileExists = useCallback(async (supabaseUser?: SupabaseUser) => {
     if (!supabaseUser) return;
 
+    const cacheKey = `profile_exists_${supabaseUser.id}`;
+    const cached = getCachedData<boolean>(cacheKey);
+    if (cached) return;
+
     try {
-      console.log('Ensuring profile exists for:', supabaseUser.id);
-      console.log('User metadata:', supabaseUser.user_metadata);
-      
-      const { _data, error: checkError } = await supabase
+      const { data, error: checkError } = await supabase
         .from('profiles')
         .select('id')
         .eq('id', supabaseUser.id)
         .single();
 
       if (checkError && checkError.code === 'PGRST116') {
-        console.log('Creating new profile');
+        let userType: 'dumper' | 'collector' = 'dumper';
         
-        // CRITICAL FIX: Get user type from multiple sources with proper priority
-        let userType: 'dumper' | 'collector' = 'dumper'; // Default fallback
-        
-        // Priority 1: Check user metadata
         if (supabaseUser.user_metadata?.user_type) {
           userType = supabaseUser.user_metadata.user_type;
-          console.log('User type from metadata:', userType);
-        }
-        // Priority 2: Check app metadata
-        else if (supabaseUser.app_metadata?.user_type) {
+        } else if (supabaseUser.app_metadata?.user_type) {
           userType = supabaseUser.app_metadata.user_type;
-          console.log('User type from app metadata:', userType);
-        }
-        // Priority 3: Check pending OAuth type
-        else {
+        } else {
           const pendingType = getPendingUserType();
           if (pendingType === 'collector' || pendingType === 'dumper') {
             userType = pendingType as 'dumper' | 'collector';
-            console.log('User type from pending OAuth:', userType);
-          }
-          // Priority 4: Extract from URL
-          else {
+          } else {
             const urlType = extractUserTypeFromUrl();
             if (urlType === 'collector' || urlType === 'dumper') {
               userType = urlType as 'dumper' | 'collector';
-              console.log('User type from URL:', urlType);
             }
           }
         }
-        
-        console.log('Final determined user type for profile creation:', userType);
         
         const profileData = {
           id: supabaseUser.id,
@@ -291,37 +172,39 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           phone_verified: false,
         };
 
-        console.log('Creating profile with data:', profileData);
-
-        const { data: newProfile, error: profileError } = await supabase
+        const { error: profileError } = await supabase
           .from('profiles')
-          .insert(profileData)
-          .select()
-          .single();
+          .insert(profileData);
 
         if (profileError) {
-          console.error('Error creating profile:', profileError);
           throw new Error(`Failed to create profile: ${profileError.message}`);
-        } else {
-          console.log('Profile created successfully:', newProfile);
         }
       } else if (checkError) {
-        console.error('Error checking profile:', checkError);
         throw new Error(`Profile check failed: ${checkError.message}`);
-      } else {
-        console.log('Profile already exists');
       }
+
+      // Cache the result for 5 minutes
+      setCachedData(cacheKey, true, 300000);
     } catch (error: unknown) {
       console.error('Error ensuring profile exists:', error);
       throw error;
     }
-  }, []);
+  }, [getPendingUserType, extractUserTypeFromUrl, getDisplayName]);
 
+  // PERFORMANCE: Optimized profile fetching with caching and timeout
   const fetchUserProfile = useCallback(async (userId: string) => {
+    const cacheKey = `user_profile_${userId}`;
+    const cached = getCachedData<User>(cacheKey);
+    
+    if (cached) {
+      setUser(cached);
+      setLoading(false);
+      setInitialized(true);
+      return;
+    }
+
     try {
-      console.log('Fetching profile for user:', userId);
-      
-      // Use a shorter timeout for profile fetching
+      // Shorter timeout for better UX
       const profilePromise = supabase
         .from('profiles')
         .select('*')
@@ -329,23 +212,22 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         .single();
 
       const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Profile fetch timeout')), 3000); // Reduced to 3 seconds
+        setTimeout(() => reject(new Error('Profile fetch timeout')), 2000); // Reduced to 2 seconds
       });
 
       const { data, error } = await Promise.race([profilePromise, timeoutPromise]) as PostgrestSingleResponse<Database['public']['Tables']['profiles']['Row']>;
 
       if (error && error.code !== 'PGRST116') {
         console.error('Error fetching user profile:', error);
-        // Create a basic user object to prevent infinite loading
         const basicUser = createBasicUser(userId);
         setUser(basicUser);
+        setCachedData(cacheKey, basicUser, 60000); // Cache for 1 minute
         setLoading(false);
         setInitialized(true);
         return;
       }
 
       if (data) {
-        console.log('Profile data found:', data);
         const userData = {
           id: data.id,
           email: data.email,
@@ -359,19 +241,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           updatedAt: data.updated_at,
         };
         
-        console.log('Setting user data:', userData);
         setUser(userData);
+        setCachedData(cacheKey, userData, 300000); // Cache for 5 minutes
         
-        // Update verification state based on user data
         setVerification(prev => ({
           ...prev,
           emailVerified: userData.emailVerified,
           phoneVerified: userData.phoneVerified,
         }));
       } else {
-        console.log('No profile found, creating basic user object');
         const basicUser = createBasicUser(userId);
         setUser(basicUser);
+        setCachedData(cacheKey, basicUser, 60000);
         
         try {
           await ensureProfileExists(session?.user);
@@ -381,44 +262,29 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       }
     } catch (error: unknown) {
       console.error('Error fetching user profile:', error);
-      // Fallback user object
       const fallbackUser = createBasicUser(userId);
       setUser(fallbackUser);
+      setCachedData(cacheKey, fallbackUser, 60000);
     } finally {
       setLoading(false);
       setInitialized(true);
     }
   }, [session?.user, createBasicUser, ensureProfileExists]);
 
+  // PERFORMANCE: Optimized initialization
   useEffect(() => {
     let mounted = true;
     let initializationTimeout: NodeJS.Timeout;
 
     const initializeAuth = async () => {
       try {
-        console.log('Initializing auth without session persistence...');
-        
-        // Set a shorter timeout to prevent long loading states
         initializationTimeout = setTimeout(() => {
           if (mounted && !initialized) {
-            console.log('Auth initialization timeout, setting loading to false');
             setLoading(false);
             setInitialized(true);
           }
-        }, 2000); // Reduced to 2 seconds since we're not using persistence
+        }, 1500); // Reduced timeout
 
-        // Clear any existing localStorage data that might cause issues
-        if (typeof window !== 'undefined') {
-          try {
-            localStorage.removeItem('supabase.auth.token');
-            const supabaseKey = 'sb-' + (import.meta.env.VITE_SUPABASE_URL?.split('//')[1]?.split('.')[0] || '') + '-auth-token';
-            localStorage.removeItem(supabaseKey);
-          } catch (e) {
-            console.warn('Failed to clear localStorage:', e);
-          }
-        }
-
-        // Get the current session (no localStorage fallback since persistence is disabled)
         const { data: { session }, error } = await supabase.auth.getSession();
         
         if (error) {
@@ -432,27 +298,23 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
         if (!mounted) return;
 
-        // Clean up OAuth hash from URL if present
+        // Clean up OAuth hash
         if (window.location.hash && window.location.hash.includes('access_token')) {
-          console.log('Cleaning up OAuth hash from URL');
           window.history.replaceState({}, document.title, window.location.pathname);
         }
 
         setSession(session);
         
         if (session?.user) {
-          console.log('Found authenticated user:', session.user.id);
           try {
             await ensureProfileExists(session.user);
             await fetchUserProfile(session.user.id);
           } catch (profileError) {
             console.error('Profile error:', profileError);
-            // Don't block the app if profile creation fails
             setLoading(false);
             setInitialized(true);
           }
         } else {
-          console.log('No authenticated user found');
           if (mounted) {
             setLoading(false);
             setInitialized(true);
@@ -474,41 +336,26 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
     initializeAuth();
 
-    // Listen for auth changes with optimized handling
+    // Optimized auth state change listener
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!mounted) return;
 
-      console.log('Auth state change:', event, session?.user?.id);
-      
-      // Clear any existing timeout
       if (initializationTimeout) {
         clearTimeout(initializationTimeout);
       }
       
-      // Clean up URL hash on any auth state change
       if (window.location.hash && window.location.hash.includes('access_token')) {
-        console.log('Cleaning up OAuth hash after auth state change');
         window.history.replaceState({}, document.title, window.location.pathname);
       }
       
       setSession(session);
       
       if (session?.user) {
-        // Create profile if it doesn't exist (for new Google users)
         if (event === 'SIGNED_IN') {
-          console.log('User signed in, ensuring profile exists');
           try {
             await ensureProfileExists(session.user);
-            
-            // Get user type and send welcome email for new sign-ins
-            const userType = session.user.user_metadata?.user_type || 'dumper';
-            const userName = getDisplayName(session.user);
-            
-            if (session.user.email) {
-              await sendWelcomeEmail(session.user.email, userName, userType);
-            }
           } catch (error) {
             console.error('Error in sign-in process:', error);
           }
@@ -523,6 +370,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         }
       } else {
         setUser(null);
+        clearCache(); // Clear cache on sign out
         setLoading(false);
         setInitialized(true);
       }
@@ -537,18 +385,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     };
   }, [ensureProfileExists, fetchUserProfile, initialized]);
 
-  const signInWithGoogle = async (userType: 'dumper' | 'collector') => {
+  // PERFORMANCE: Optimized sign in function
+  const signInWithGoogle = useCallback(async (userType: 'dumper' | 'collector') => {
     setLoading(true);
     
     try {
-      const redirectTo = getRedirectUrl();
-      
-      console.log('Starting Google sign-in for:', userType, 'redirectTo:', redirectTo);
-      
-      // Store user type for OAuth flow
       storeUserTypeForOAuth(userType);
       
-      // CRITICAL FIX: Use state parameter to pass user type through OAuth
       const stateData = {
         user_type: userType,
         timestamp: Date.now()
@@ -557,12 +400,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo,
+          redirectTo: redirectUrl,
           queryParams: {
             access_type: 'offline',
             prompt: 'consent',
           },
-          // Pass user type in the state parameter for OAuth
           state: btoa(JSON.stringify(stateData)),
         },
       });
@@ -572,36 +414,30 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         setLoading(false);
         throw error;
       }
-      
-      // Don't set loading to false here - let the auth state change handle it
     } catch (error: unknown) {
       console.error('Error signing in with Google:', error);
       setLoading(false);
       throw error;
     }
-  };
+  }, [storeUserTypeForOAuth, redirectUrl]);
 
-  const signOut = async () => {
+  // PERFORMANCE: Optimized sign out function
+  const signOut = useCallback(async () => {
     try {
-      console.log('Signing out...');
+      clearCache();
       
-      // Clear any localStorage data to prevent stale session issues
       if (typeof window !== 'undefined') {
         try {
           localStorage.removeItem('supabase.auth.token');
-          localStorage.removeItem('pending_user_type'); // Clean up OAuth state
-          const supabaseKey = 'sb-' + (import.meta.env.VITE_SUPABASE_URL?.split('//')[1]?.split('.')[0] || '') + '-auth-token';
-          localStorage.removeItem(supabaseKey);
+          localStorage.removeItem('pending_user_type');
         } catch (e) {
           console.warn('Failed to clear localStorage:', e);
         }
       }
       
-      // Sign out from Supabase
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
       
-      // Reset verification state
       setVerification({
         emailSent: false,
         phoneSent: false,
@@ -611,29 +447,28 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         error: null,
       });
 
-      // Reset user and session state
       setUser(null);
       setSession(null);
       setInitialized(false);
       
-      // Redirect to the custom domain
-      const redirectUrl = getRedirectUrl();
       window.location.href = redirectUrl;
     } catch (error) {
       console.error('Error signing out:', error);
       throw error;
     }
-  };
+  }, [redirectUrl]);
 
-  const updateProfile = async (updates: Partial<User>) => {
+  // PERFORMANCE: Optimized profile update function
+  const updateProfile = useCallback(async (updates: Partial<User>) => {
     if (!user) {
       throw new Error('User not authenticated');
     }
 
     try {
-      console.log('Updating profile with:', updates);
+      // Clear cache for this user
+      clearCache(`user_profile_${user.id}`);
+      clearCache(`profile_exists_${user.id}`);
       
-      // First, check if profile exists
       const { data: existingProfile, error: checkError } = await supabase
         .from('profiles')
         .select('*')
@@ -641,8 +476,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         .single();
 
       if (checkError && checkError.code === 'PGRST116') {
-        // Profile doesn't exist, create it
-        console.log('Creating profile during update');
         const profileData = {
           id: user.id,
           email: user.email,
@@ -661,17 +494,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           .single();
 
         if (createError) {
-          console.error('Error creating profile during update:', createError);
           throw new Error(`Failed to create profile: ${createError.message}`);
         }
-
-        console.log('Profile created successfully:', newProfile);
       } else if (checkError) {
-        console.error('Error checking profile:', checkError);
         throw new Error(`Profile check failed: ${checkError.message}`);
       } else {
-        // Profile exists, update it
-        console.log('Updating existing profile');
         const { data: updatedProfile, error: updateError } = await supabase
           .from('profiles')
           .update({
@@ -686,30 +513,25 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           .single();
 
         if (updateError) {
-          console.error('Error updating profile:', updateError);
           throw new Error(`Failed to update profile: ${updateError.message}`);
         }
-
-        console.log('Profile updated successfully:', updatedProfile);
       }
 
       // Update local user state immediately
       const updatedUser = { ...user, ...updates, updatedAt: new Date().toISOString() };
-      console.log('Setting updated user state:', updatedUser);
       setUser(updatedUser);
 
-      // Force a re-fetch to ensure we have the latest data
-      setTimeout(() => {
-        fetchUserProfile(user.id);
-      }, 100);
+      // Cache the updated user data
+      setCachedData(`user_profile_${user.id}`, updatedUser, 300000);
 
     } catch (error: unknown) {
       console.error('Error updating profile:', error);
       throw error;
     }
-  };
+  }, [user]);
 
-  const resendEmailVerification = async () => {
+  // PERFORMANCE: Optimized verification functions
+  const resendEmailVerification = useCallback(async () => {
     if (!session?.user?.email) return;
 
     setVerification(prev => ({ ...prev, isVerifying: true, error: null }));
@@ -737,9 +559,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       }));
       throw error;
     }
-  };
+  }, [session?.user?.email]);
 
-  const sendPhoneVerification = async (phone: string) => {
+  const sendPhoneVerification = useCallback(async (phone: string) => {
     setVerification(prev => ({ ...prev, isVerifying: true, error: null }));
 
     try {
@@ -764,9 +586,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       }));
       throw error;
     }
-  };
+  }, []);
 
-  const verifyPhoneCode = async (code: string) => {
+  const verifyPhoneCode = useCallback(async (code: string) => {
     if (!user) return;
 
     setVerification(prev => ({ ...prev, isVerifying: true, error: null }));
@@ -788,7 +610,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
       if (updateError) throw updateError;
 
-      setUser(prev => prev ? { ...prev, phoneVerified: true } : null);
+      const updatedUser = { ...user, phoneVerified: true };
+      setUser(updatedUser);
+      
+      // Update cache
+      setCachedData(`user_profile_${user.id}`, updatedUser, 300000);
+      
       setVerification(prev => ({
         ...prev,
         phoneVerified: true,
@@ -804,9 +631,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       }));
       throw error;
     }
-  };
+  }, [user]);
 
-  const value = {
+  // PERFORMANCE: Memoize context value
+  const value = useMemo(() => ({
     user,
     session,
     loading: loading && !initialized,
@@ -817,7 +645,19 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     resendEmailVerification,
     sendPhoneVerification,
     verifyPhoneCode,
-  };
+  }), [
+    user,
+    session,
+    loading,
+    initialized,
+    verification,
+    signInWithGoogle,
+    signOut,
+    updateProfile,
+    resendEmailVerification,
+    sendPhoneVerification,
+    verifyPhoneCode,
+  ]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };

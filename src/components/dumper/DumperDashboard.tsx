@@ -19,7 +19,7 @@ export const DumperDashboard: React.FC = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
 
-  // OPTIMIZATION: Memoize filtered requests to prevent unnecessary re-renders
+  // PERFORMANCE: Memoize filtered requests to prevent unnecessary re-renders
   const filteredRequests = useMemo(() => {
     return requests.filter(request => {
       const matchesFilter = filter === 'all' || request.status === filter;
@@ -32,14 +32,15 @@ export const DumperDashboard: React.FC = () => {
     });
   }, [requests, filter, searchTerm]);
 
-  // OPTIMIZATION: Memoize stats calculations
+  // PERFORMANCE: Memoize stats calculations
   const stats = useMemo(() => {
     const activeRequests = requests.filter(r => ['pending', 'matched', 'in_progress'].includes(r.status)).length;
     const completedRequests = requests.filter(r => r.status === 'completed').length;
     return { activeRequests, completedRequests };
   }, [requests]);
 
-  const getStatusColor = (status: string) => {
+  // PERFORMANCE: Memoize helper functions
+  const getStatusColor = useMemo(() => (status: string) => {
     switch (status) {
       case 'pending': return 'bg-yellow-100 text-yellow-800';
       case 'matched': return 'bg-blue-100 text-blue-800';
@@ -48,20 +49,19 @@ export const DumperDashboard: React.FC = () => {
       case 'cancelled': return 'bg-red-100 text-red-800';
       default: return 'bg-gray-100 text-gray-800';
     }
-  };
+  }, []);
 
-  const formatDate = (dateString: string) => {
+  const formatDate = useMemo(() => (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
       month: 'short',
       day: 'numeric',
       hour: '2-digit',
       minute: '2-digit',
     });
-  };
+  }, []);
 
-  // Helper function to get user's first name safely
-  const getFirstName = () => {
-    // First try to get from fullName
+  // PERFORMANCE: Memoize user's first name
+  const firstName = useMemo(() => {
     if (user?.fullName && user.fullName.trim()) {
       const firstName = user.fullName.trim().split(' ')[0];
       if (firstName && firstName.length > 0) {
@@ -69,36 +69,26 @@ export const DumperDashboard: React.FC = () => {
       }
     }
     
-    // Fallback to email username if no full name
     if (user?.email) {
       const emailUsername = user.email.split('@')[0];
-      // Capitalize first letter and clean up
       const cleanUsername = emailUsername.replace(/[^a-zA-Z0-9]/g, '');
       if (cleanUsername.length > 0) {
         return cleanUsername.charAt(0).toUpperCase() + cleanUsername.slice(1).toLowerCase();
       }
     }
     
-    // Last resort fallback
     return 'there';
-  };
+  }, [user?.fullName, user?.email]);
 
   const handleCreateRequest = async (requestData: unknown) => {
     try {
       setCreateError(null);
-      console.log('Dashboard: Creating request with data:', requestData);
-      
       await createRequest(requestData);
       setShowRequestForm(false);
-      
-      console.log('Dashboard: Request created successfully');
     } catch (error: unknown) {
       console.error('Dashboard: Error creating request:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to create request. Please try again.';
       setCreateError(errorMessage);
-      
-      // Don't close the form if there's an error, let user try again
-      // setShowRequestForm(false);
     }
   };
 
@@ -279,7 +269,7 @@ export const DumperDashboard: React.FC = () => {
         {/* Welcome Section */}
         <div className="mb-6 sm:mb-8">
           <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-2">
-            Welcome back, {getFirstName()}!
+            Welcome back, {firstName}!
           </h2>
           <p className="text-gray-600 text-sm sm:text-base">Manage your waste collection requests and track their progress.</p>
         </div>

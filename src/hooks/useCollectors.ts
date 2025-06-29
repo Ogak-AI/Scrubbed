@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '../lib/supabase';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { supabase, getCachedData, setCachedData, clearCache } from '../lib/supabase';
 import { useAuth } from './useAuth';
 import type { Collector } from '../types';
 
@@ -10,11 +10,21 @@ export const useCollectors = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // PERFORMANCE: Memoize cache keys
+  const collectorsCacheKey = 'available_collectors';
+  const myProfileCacheKey = useMemo(() => 
+    user ? `my_collector_profile_${user.id}` : null, 
+    [user?.id]
+  );
+
   const ensureUserProfileExists = useCallback(async () => {
     if (!user) return false;
 
+    const cacheKey = `profile_exists_${user.id}`;
+    const cached = getCachedData<boolean>(cacheKey);
+    if (cached) return true;
+
     try {
-      // Check if profile exists
       const { data, error: checkError } = await supabase
         .from('profiles')
         .select('id')
@@ -22,9 +32,6 @@ export const useCollectors = () => {
         .single();
 
       if (checkError && checkError.code === 'PGRST116') {
-        // Profile doesn't exist, create it
-        console.log('Creating missing profile for collector:', user.id);
-        
         const { error: insertError } = await supabase
           .from('profiles')
           .insert({
@@ -39,24 +46,32 @@ export const useCollectors = () => {
           });
 
         if (insertError) {
-          console.error('Error creating profile:', insertError);
           throw new Error(`Failed to create user profile: ${insertError.message}`);
         }
 
-        console.log('Profile created successfully');
+        setCachedData(cacheKey, true, 300000);
         return true;
       } else if (checkError) {
         throw checkError;
       }
 
-      return true; // Profile exists
+      setCachedData(cacheKey, true, 300000);
+      return true;
     } catch (err: unknown) {
       console.error('Error ensuring profile exists:', err);
       throw err;
     }
   }, [user]);
 
+  // PERFORMANCE: Optimized fetch collectors with caching
   const fetchCollectors = useCallback(async () => {
+    // Check cache first
+    const cached = getCachedData<Collector[]>(collectorsCacheKey);
+    if (cached) {
+      setCollectors(cached);
+      return;
+    }
+
     try {
       setError(null);
 
@@ -64,7 +79,8 @@ export const useCollectors = () => {
         .from('collectors')
         .select('*')
         .eq('is_available', true)
-        .order('rating', { ascending: false, nullsLast: true });
+        .order('rating', { ascending: false, nullsLast: true })
+        .limit(20); // Limit for better performance
 
       if (fetchError) throw fetchError;
 
@@ -82,6 +98,9 @@ export const useCollectors = () => {
       }));
 
       setCollectors(formattedCollectors);
+      
+      // Cache for 5 minutes
+      setCachedData(collectorsCacheKey, formattedCollectors, 300000);
     } catch (err: unknown) {
       console.error('Error fetching collectors:', err);
       const errorMessage = err instanceof Error ? err.message : 'Failed to fetch collectors';
@@ -89,16 +108,22 @@ export const useCollectors = () => {
     }
   }, []);
 
+  // PERFORMANCE: Optimized fetch my collector profile with caching
   const fetchMyCollectorProfile = useCallback(async () => {
-    if (!user || user.userType !== 'collector') {
+    if (!user || user.userType !== 'collector' || !myProfileCacheKey) {
+      return;
+    }
+
+    // Check cache first
+    const cached = getCachedData<Collector | null>(myProfileCacheKey);
+    if (cached !== null) {
+      setMyCollectorProfile(cached);
       return;
     }
 
     try {
       setError(null);
-      console.log('Fetching collector profile for user:', user.id);
 
-      // Use a more specific query to avoid 406 errors
       const { data, error } = await supabase
         .from('collectors')
         .select(`
@@ -114,18 +139,14 @@ export const useCollectors = () => {
           updated_at
         `)
         .eq('profile_id', user.id)
-        .maybeSingle(); // Use maybeSingle() instead of single() to handle no results gracefully
+        .maybeSingle();
 
       if (error) {
-        console.error('Error fetching collector profile:', error);
-        
-        // If it's a 406 error or similar, it might be due to RLS policies
         if (error.code === 'PGRST301' || error.message.includes('406')) {
-          console.log('Possible RLS policy issue, collector profile may not exist yet');
           setMyCollectorProfile(null);
+          setCachedData(myProfileCacheKey, null, 300000);
           return;
         }
-        
         throw error;
       }
 
@@ -143,11 +164,11 @@ export const useCollectors = () => {
           updatedAt: data.updated_at,
         };
 
-        console.log('Collector profile found:', collectorProfile);
         setMyCollectorProfile(collectorProfile);
+        setCachedData(myProfileCacheKey, collectorProfile, 300000);
       } else {
-        console.log('No collector profile found for user:', user.id);
         setMyCollectorProfile(null);
+        setCachedData(myProfileCacheKey, null, 300000);
       }
     } catch (err: unknown) {
       console.error('Error fetching my collector profile:', err);
@@ -155,8 +176,9 @@ export const useCollectors = () => {
       setError(errorMessage);
       setMyCollectorProfile(null);
     }
-  }, [user]);
+  }, [user, myProfileCacheKey]);
 
+  // PERFORMANCE: Optimized create collector profile
   const createCollectorProfile = useCallback(async (profileData: {
     specializations: string[];
     serviceRadius: number;
@@ -169,9 +191,7 @@ export const useCollectors = () => {
 
     try {
       setError(null);
-      console.log('Creating collector profile for user:', user.id);
-
-      // Ensure user profile exists first
+      
       await ensureUserProfileExists();
 
       const insertData = {
@@ -181,8 +201,6 @@ export const useCollectors = () => {
         is_available: true,
         total_collections: 0,
       };
-
-      console.log('Inserting collector profile with data:', insertData);
 
       const { data, error } = await supabase
         .from('collectors')
@@ -202,8 +220,6 @@ export const useCollectors = () => {
         .single();
 
       if (error) {
-        console.error('Error creating collector profile:', error);
-        
         if (error.code === '23503') {
           throw new Error('Your user profile is not properly set up. Please try signing out and signing in again.');
         }
@@ -223,8 +239,16 @@ export const useCollectors = () => {
         updatedAt: data.updated_at,
       };
 
-      console.log('Collector profile created successfully:', newCollectorProfile);
       setMyCollectorProfile(newCollectorProfile);
+      
+      // Update cache
+      if (myProfileCacheKey) {
+        setCachedData(myProfileCacheKey, newCollectorProfile, 300000);
+      }
+      
+      // Clear collectors cache to include new profile
+      clearCache(collectorsCacheKey);
+      
       return newCollectorProfile;
     } catch (err: unknown) {
       console.error('Error creating collector profile:', err);
@@ -232,8 +256,9 @@ export const useCollectors = () => {
       setError(errorMessage);
       throw err;
     }
-  }, [user, ensureUserProfileExists]);
+  }, [user, ensureUserProfileExists, myProfileCacheKey]);
 
+  // PERFORMANCE: Optimized availability update
   const updateAvailability = useCallback(async (isAvailable: boolean) => {
     if (!myCollectorProfile) throw new Error('No collector profile found');
 
@@ -250,21 +275,29 @@ export const useCollectors = () => {
 
       if (error) throw error;
 
-      setMyCollectorProfile(prev => prev ? { ...prev, isAvailable } : null);
+      const updatedProfile = { ...myCollectorProfile, isAvailable };
+      setMyCollectorProfile(updatedProfile);
+      
+      // Update cache
+      if (myProfileCacheKey) {
+        setCachedData(myProfileCacheKey, updatedProfile, 300000);
+      }
+      
+      // Clear collectors cache
+      clearCache(collectorsCacheKey);
     } catch (err: unknown) {
       console.error('Error updating availability:', err);
       const errorMessage = err instanceof Error ? err.message : 'Failed to update availability';
       setError(errorMessage);
       throw err;
     }
-  }, [myCollectorProfile]);
+  }, [myCollectorProfile, myProfileCacheKey]);
 
+  // PERFORMANCE: Optimized location update (non-critical, no error throwing)
   const updateLocation = useCallback(async (location: { lat: number; lng: number }) => {
-    if (!myCollectorProfile) throw new Error('No collector profile found');
+    if (!myCollectorProfile) return;
 
     try {
-      setError(null);
-      
       const { error } = await supabase
         .from('collectors')
         .update({
@@ -273,29 +306,38 @@ export const useCollectors = () => {
         })
         .eq('id', myCollectorProfile.id);
 
-      if (error) throw error;
+      if (error) {
+        console.warn('Location update failed:', error);
+        return;
+      }
 
-      setMyCollectorProfile(prev => prev ? { ...prev, currentLocation: location } : null);
+      const updatedProfile = { ...myCollectorProfile, currentLocation: location };
+      setMyCollectorProfile(updatedProfile);
+      
+      // Update cache
+      if (myProfileCacheKey) {
+        setCachedData(myProfileCacheKey, updatedProfile, 300000);
+      }
     } catch (err: unknown) {
-      console.error('Error updating location:', err);
-      // Don't set error state for location updates as they're not critical
-      console.warn('Location update failed, continuing without error');
+      console.warn('Location update failed:', err);
     }
-  }, [myCollectorProfile]);
+  }, [myCollectorProfile, myProfileCacheKey]);
 
+  // PERFORMANCE: Optimized initialization
   useEffect(() => {
     const initializeCollectors = async () => {
       try {
         setLoading(true);
         setError(null);
 
-        // Always fetch available collectors
-        await fetchCollectors();
-
-        // Only fetch collector profile if user is a collector
+        // Fetch collectors in parallel with profile if user is collector
+        const promises = [fetchCollectors()];
+        
         if (user?.userType === 'collector') {
-          await fetchMyCollectorProfile();
+          promises.push(fetchMyCollectorProfile());
         }
+
+        await Promise.all(promises);
       } catch (err: unknown) {
         console.error('Error initializing collectors:', err);
         const errorMessage = err instanceof Error ? err.message : 'Failed to initialize collectors';
@@ -310,7 +352,7 @@ export const useCollectors = () => {
     } else {
       setLoading(false);
     }
-  }, [user, fetchCollectors, fetchMyCollectorProfile]);
+  }, [user?.id, user?.userType]); // Only depend on user ID and type
 
   return {
     collectors,

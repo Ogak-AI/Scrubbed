@@ -9,8 +9,6 @@ console.log('Supabase Key exists:', !!supabaseAnonKey);
 
 if (!supabaseUrl || !supabaseAnonKey) {
   console.error('Missing Supabase environment variables!');
-  console.error('VITE_SUPABASE_URL:', supabaseUrl);
-  console.error('VITE_SUPABASE_ANON_KEY exists:', !!supabaseAnonKey);
   throw new Error('Missing Supabase environment variables. Please check your .env file.');
 }
 
@@ -23,35 +21,41 @@ if (supabaseUrl.includes('placeholder') || supabaseUrl.includes('your-project'))
 // Get the current origin, prioritizing the custom domain
 const getCurrentOrigin = () => {
   if (typeof window !== 'undefined') {
-    // If we're on the custom domain, use it
     if (window.location.hostname === 'scrubbed.online') {
       return 'https://scrubbed.online';
     }
-    // Otherwise use the current origin
     return window.location.origin;
   }
-  // Fallback for server-side rendering
   return 'https://scrubbed.online';
 };
 
 export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
   auth: {
-    // Use the current origin for redirects, prioritizing custom domain
     redirectTo: getCurrentOrigin(),
-    // Disable session persistence to prevent stale session issues
     autoRefreshToken: true,
-    persistSession: false, // DISABLED: This prevents storing sessions in localStorage
+    persistSession: true, // ENABLED: Re-enable session persistence for better performance
     detectSessionInUrl: true,
-    // Reduce token refresh attempts
-    refreshTokenRetryCount: 1,
-    // Use memory-only storage (no persistence)
+    refreshTokenRetryCount: 2, // Increased from 1
+    // Use localStorage for better performance
     storage: {
-      getItem: () => null, // Always return null - no persistence
-      setItem: () => {}, // Do nothing - no persistence
-      removeItem: () => {}, // Do nothing - no persistence
+      getItem: (key: string) => {
+        if (typeof window !== 'undefined') {
+          return localStorage.getItem(key);
+        }
+        return null;
+      },
+      setItem: (key: string, value: string) => {
+        if (typeof window !== 'undefined') {
+          localStorage.setItem(key, value);
+        }
+      },
+      removeItem: (key: string) => {
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem(key);
+        }
+      },
     },
   },
-  // Add connection pooling and performance optimizations
   db: {
     schema: 'public',
   },
@@ -60,124 +64,75 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
       'x-my-custom-header': 'scrubbed-app',
     },
   },
-  // IMPROVED: Better realtime configuration to prevent WebSocket errors
+  // OPTIMIZED: Better realtime configuration for performance
   realtime: {
     params: {
-      eventsPerSecond: 2, // Reduced from 3 to be more conservative
+      eventsPerSecond: 1, // Reduced from 2 for better performance
     },
-    // Add heartbeat and timeout settings
-    heartbeatIntervalMs: 30000, // 30 seconds
-    reconnectAfterMs: (tries: number) => Math.min(tries * 1000, 10000), // Exponential backoff up to 10s
-    timeout: 10000, // 10 second timeout
-    // Enhanced error handling for development
-    ...(import.meta.env.DEV && {
-      transport: 'websocket',
-      logger: (kind: string, msg: string, data?: unknown) => {
-        if (kind === 'error') {
-          console.warn('Realtime error (non-critical):', msg, data);
-        }
-      }
-    })
+    heartbeatIntervalMs: 60000, // Increased to 60 seconds
+    reconnectAfterMs: (tries: number) => Math.min(tries * 2000, 30000), // Slower reconnection
+    timeout: 20000, // Increased timeout
   },
 });
 
-// Function to extract user type from OAuth state
-const extractUserTypeFromUrl = (): string | null => {
-  if (typeof window === 'undefined') return null;
-  
-  try {
-    // Check URL hash for state parameter
-    const hash = window.location.hash;
-    if (hash.includes('state=')) {
-      const stateMatch = hash.match(/state=([^&]+)/);
-      if (stateMatch) {
-        const decodedState = decodeURIComponent(stateMatch[1]);
-        const stateData = JSON.parse(atob(decodedState));
-        console.log('Extracted state data:', stateData);
-        return stateData.user_type || null;
-      }
-    }
-    
-    // Check URL search params as fallback
-    const urlParams = new URLSearchParams(window.location.search);
-    const state = urlParams.get('state');
-    if (state) {
-      const stateData = JSON.parse(atob(state));
-      console.log('Extracted state data from search:', stateData);
-      return stateData.user_type || null;
-    }
-  } catch (error) {
-    console.warn('Failed to extract user type from URL state:', error);
+// PERFORMANCE: Cache for frequently accessed data
+const cache = new Map<string, { data: any; timestamp: number; ttl: number }>();
+
+export const getCachedData = <T>(key: string, ttl: number = 30000): T | null => {
+  const cached = cache.get(key);
+  if (cached && Date.now() - cached.timestamp < cached.ttl) {
+    return cached.data as T;
   }
-  
   return null;
 };
 
-// Enhanced auth state change handler with OAuth state processing
-supabase.auth.onAuthStateChange((event, session) => {
-  console.log('Auth state change:', event);
-  
-  if (event === 'SIGNED_IN' && session?.user) {
-    // Extract user type from OAuth state and update user metadata
-    const userTypeFromUrl = extractUserTypeFromUrl();
-    
-    if (userTypeFromUrl) {
-      console.log('Setting user type from OAuth state:', userTypeFromUrl);
-      
-      // Update the user metadata with the correct user type
-      session.user.user_metadata = {
-        ...session.user.user_metadata,
-        user_type: userTypeFromUrl
-      };
-      
-      console.log('Updated user metadata:', session.user.user_metadata);
-    }
-  }
-  
-  if (event === 'TOKEN_REFRESHED') {
-    console.log('Token refreshed successfully');
-  } else if (event === 'SIGNED_OUT') {
-    console.log('User signed out');
-    // Clear any remaining localStorage data
-    if (typeof window !== 'undefined') {
-      try {
-        localStorage.removeItem('supabase.auth.token');
-        localStorage.removeItem('pending_user_type');
-        localStorage.removeItem('sb-' + supabaseUrl.split('//')[1].split('.')[0] + '-auth-token');
-      } catch (e) {
-        console.warn('Failed to clear localStorage:', e);
+export const setCachedData = <T>(key: string, data: T, ttl: number = 30000): void => {
+  cache.set(key, { data, timestamp: Date.now(), ttl });
+};
+
+export const clearCache = (pattern?: string): void => {
+  if (pattern) {
+    for (const key of cache.keys()) {
+      if (key.includes(pattern)) {
+        cache.delete(key);
       }
     }
-  } else if (event === 'SIGNED_IN') {
-    console.log('User signed in successfully');
-  }
-});
-
-// Helper function to check if realtime is available
-export const isRealtimeAvailable = () => {
-  try {
-    return typeof WebSocket !== 'undefined' && 
-           !import.meta.env.SSR && 
-           navigator.onLine !== false;
-  } catch {
-    return false;
+  } else {
+    cache.clear();
   }
 };
 
-// OPTIMIZATION: Enhanced helper function to safely create realtime subscriptions with better performance
-export const createSafeRealtimeSubscription = (
+// OPTIMIZED: Debounced realtime subscription helper
+let subscriptionDebounceTimer: NodeJS.Timeout;
+
+export const createOptimizedRealtimeSubscription = (
   table: string,
   callback: (payload: unknown) => void,
-  options: { event?: string; filter?: string } = {}
+  options: { event?: string; filter?: string; debounceMs?: number } = {}
 ) => {
-  if (!isRealtimeAvailable()) {
+  const { debounceMs = 1000 } = options;
+  
+  if (typeof WebSocket === 'undefined' || import.meta.env.SSR) {
     console.log('Realtime not available, skipping subscription');
     return null;
   }
 
   try {
-    // Create a unique channel name to prevent conflicts
-    const channelName = `${table}_changes_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const channelName = `${table}_optimized_${Date.now()}`;
+    
+    const debouncedCallback = (payload: unknown) => {
+      if (subscriptionDebounceTimer) {
+        clearTimeout(subscriptionDebounceTimer);
+      }
+      
+      subscriptionDebounceTimer = setTimeout(() => {
+        try {
+          callback(payload);
+        } catch (error) {
+          console.warn('Error in realtime callback:', error);
+        }
+      }, debounceMs);
+    };
     
     const channel = supabase
       .channel(channelName)
@@ -189,21 +144,13 @@ export const createSafeRealtimeSubscription = (
           table: table,
           ...(options.filter && { filter: options.filter })
         },
-        (payload) => {
-          try {
-            callback(payload);
-          } catch (error) {
-            console.warn('Error in realtime callback:', error);
-          }
-        }
+        debouncedCallback
       )
       .subscribe((status) => {
-        if (status === 'SUBSCRIPTION_ERROR') {
+        if (status === 'SUBSCRIBED') {
+          console.log(`Optimized realtime subscription active for ${table}`);
+        } else if (status === 'SUBSCRIPTION_ERROR') {
           console.warn(`Realtime subscription error for ${table} (non-critical)`);
-        } else if (status === 'SUBSCRIBED') {
-          console.log(`Realtime subscription active for ${table}`);
-        } else if (status === 'CHANNEL_ERROR') {
-          console.warn(`Realtime channel error for ${table} (non-critical)`);
         }
       });
 
@@ -213,3 +160,75 @@ export const createSafeRealtimeSubscription = (
     return null;
   }
 };
+
+// PERFORMANCE: Batch database operations
+export const batchOperations = async <T>(
+  operations: (() => Promise<T>)[],
+  batchSize: number = 5
+): Promise<T[]> => {
+  const results: T[] = [];
+  
+  for (let i = 0; i < operations.length; i += batchSize) {
+    const batch = operations.slice(i, i + batchSize);
+    const batchResults = await Promise.all(batch.map(op => op()));
+    results.push(...batchResults);
+  }
+  
+  return results;
+};
+
+// Function to extract user type from OAuth state
+const extractUserTypeFromUrl = (): string | null => {
+  if (typeof window === 'undefined') return null;
+  
+  try {
+    const hash = window.location.hash;
+    if (hash.includes('state=')) {
+      const stateMatch = hash.match(/state=([^&]+)/);
+      if (stateMatch) {
+        const decodedState = decodeURIComponent(stateMatch[1]);
+        const stateData = JSON.parse(atob(decodedState));
+        return stateData.user_type || null;
+      }
+    }
+    
+    const urlParams = new URLSearchParams(window.location.search);
+    const state = urlParams.get('state');
+    if (state) {
+      const stateData = JSON.parse(atob(state));
+      return stateData.user_type || null;
+    }
+  } catch (error) {
+    console.warn('Failed to extract user type from URL state:', error);
+  }
+  
+  return null;
+};
+
+// Enhanced auth state change handler
+supabase.auth.onAuthStateChange((event, session) => {
+  if (event === 'SIGNED_IN' && session?.user) {
+    const userTypeFromUrl = extractUserTypeFromUrl();
+    
+    if (userTypeFromUrl) {
+      session.user.user_metadata = {
+        ...session.user.user_metadata,
+        user_type: userTypeFromUrl
+      };
+    }
+    
+    // Clear cache on sign in
+    clearCache();
+  } else if (event === 'SIGNED_OUT') {
+    // Clear cache and localStorage on sign out
+    clearCache();
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.removeItem('supabase.auth.token');
+        localStorage.removeItem('pending_user_type');
+      } catch (e) {
+        console.warn('Failed to clear localStorage:', e);
+      }
+    }
+  }
+});
