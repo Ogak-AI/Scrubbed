@@ -37,102 +37,26 @@ const AppContent: React.FC = () => {
     );
   }
 
-  // CRITICAL FIX: More robust profile completion validation
-  const isProfileComplete = (): boolean => {
-    // Check if full name is valid (must have at least first and last name)
-    const hasValidFullName = (): boolean => {
-      if (!user.fullName || typeof user.fullName !== 'string') return false;
-      const trimmed = user.fullName.trim();
-      // Must be at least 3 characters and contain a space (first + last name)
-      return trimmed.length >= 3 && trimmed.includes(' ') && trimmed.split(' ').filter(part => part.length > 0).length >= 2;
-    };
-
-    // Check if address is valid and complete
-    const hasValidAddress = (): boolean => {
-      if (!user.address || typeof user.address !== 'string') return false;
-      const trimmed = user.address.trim();
-      
-      // If it's less than 10 characters, it's definitely incomplete
-      if (trimmed.length < 10) return false;
-      
-      try {
-        // Try to parse as JSON (structured address)
-        const parsed = JSON.parse(trimmed);
-        if (typeof parsed === 'object' && parsed !== null) {
-          const requiredFields = ['street', 'city', 'state', 'zipCode', 'country'];
-          return requiredFields.every(field => {
-            const value = parsed[field];
-            return value && typeof value === 'string' && value.trim().length >= 2;
-          });
-        }
-      } catch {
-        // If not JSON, treat as plain text address
-        // A complete address should have at least 15 characters and contain common address indicators
-        return trimmed.length >= 15 && (
-          trimmed.includes(',') || 
-          /\d/.test(trimmed) || // Contains numbers
-          /street|st|avenue|ave|road|rd|drive|dr|lane|ln|boulevard|blvd/i.test(trimmed)
-        );
-      }
-      
-      return false;
-    };
-
-    const validFullName = hasValidFullName();
-    const validAddress = hasValidAddress();
-    
-    console.log('App.tsx Profile Completion Check:', {
-      fullName: user.fullName,
-      validFullName,
-      address: user.address,
-      validAddress,
-      isComplete: validFullName && validAddress
-    });
-    
-    return validFullName && validAddress;
-  };
-
-  // CRITICAL FIX: Enhanced phone verification logic
-  const needsPhoneVerification = (): boolean => {
-    // Only require phone verification if:
-    // 1. User has provided a phone number
-    // 2. The phone number is not empty/null
-    // 3. The phone is not yet verified
-    const hasPhoneNumber = user.phone && typeof user.phone === 'string' && user.phone.trim().length > 0;
-    const phoneNotVerified = !verification.phoneVerified;
-    
-    const needsVerification = hasPhoneNumber && phoneNotVerified;
-    
-    console.log('App.tsx Phone Verification Check:', {
-      phone: user.phone,
-      hasPhoneNumber,
-      phoneVerified: verification.phoneVerified,
-      needsVerification
-    });
-    
-    return needsVerification;
-  };
-
-  const profileComplete = isProfileComplete();
-  const phoneVerificationNeeded = needsPhoneVerification();
+  // CRITICAL CHANGE: Only show verification page for phone verification if user has a phone number
+  // Remove all profile completion checks - go directly to dashboard
+  const hasPhoneNumber = user.phone && typeof user.phone === 'string' && user.phone.trim().length > 0;
+  const needsPhoneVerification = hasPhoneNumber && !verification.phoneVerified;
   
-  // CRITICAL FIX: Only show verification page if profile is incomplete OR phone verification is needed
-  const shouldShowVerification = !profileComplete || phoneVerificationNeeded;
-  
-  console.log('App.tsx Final Decision:', {
-    profileComplete,
-    phoneVerificationNeeded,
-    shouldShowVerification,
-    decision: shouldShowVerification ? 'SHOW_VERIFICATION_PAGE' : 'SHOW_DASHBOARD'
+  console.log('App.tsx - Simplified Logic:', {
+    hasPhoneNumber,
+    phoneVerified: verification.phoneVerified,
+    needsPhoneVerification,
+    decision: needsPhoneVerification ? 'SHOW_PHONE_VERIFICATION' : 'SHOW_DASHBOARD'
   });
   
-  if (shouldShowVerification) {
+  // Only show verification page if phone verification is needed
+  if (needsPhoneVerification) {
     return <VerificationPage />;
   }
 
   // Get the appropriate dashboard component based on user type
   const getDashboardComponent = () => {
-    console.log('Profile is complete and verified, showing dashboard for user type:', user.userType);
+    console.log('Showing dashboard for user type:', user.userType);
     switch (user.userType) {
       case 'dumper':
         return <DumperDashboard />;
@@ -145,7 +69,7 @@ const AppContent: React.FC = () => {
     }
   };
 
-  // User is authenticated and profile is complete - show their dashboard
+  // User is authenticated - show their dashboard directly
   return (
     <Router>
       <Routes>
@@ -158,7 +82,7 @@ const AppContent: React.FC = () => {
         <Route path="/collector" element={<CollectorDashboard />} />
         <Route path="/admin" element={<AdminDashboard />} />
         
-        {/* Verification route - redirect to dashboard if already verified */}
+        {/* Verification route - redirect to dashboard if no phone verification needed */}
         <Route path="/verify" element={<Navigate to="/" replace />} />
         
         {/* Redirect any auth routes to dashboard if already logged in */}

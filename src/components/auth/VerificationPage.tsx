@@ -1,29 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Phone, CheckCircle, AlertCircle, RefreshCw, MessageSquare, User, MapPin, Trash2 } from 'lucide-react';
+import { Phone, CheckCircle, AlertCircle, RefreshCw, MessageSquare } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
-import { getCountriesWithPopularFirst } from '../../utils/countries';
 
 export const VerificationPage: React.FC = () => {
-  const { user, verification, sendPhoneVerification, verifyPhoneCode, updateProfile } = useAuth();
+  const { user, verification, sendPhoneVerification, verifyPhoneCode } = useAuth();
   const [phoneCode, setPhoneCode] = useState('');
   const [countdown, setCountdown] = useState(0);
-  const [showProfileSetup, setShowProfileSetup] = useState(false);
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [profileData, setProfileData] = useState({
-    fullName: user?.fullName || '',
-    userType: user?.userType || 'dumper' as 'dumper' | 'collector',
-    phone: user?.phone || '',
-    address: {
-      street: '',
-      city: '',
-      state: '',
-      zipCode: '',
-      country: 'United States',
-    },
-  });
-
-  const countries = getCountriesWithPopularFirst();
 
   useEffect(() => {
     if (countdown > 0) {
@@ -32,398 +15,51 @@ export const VerificationPage: React.FC = () => {
     }
   }, [countdown]);
 
-  // CRITICAL FIX: More precise profile completion detection
-  useEffect(() => {
-    if (user) {
-      const isValidFullName = (name: string | null): boolean => {
-        if (!name || typeof name !== 'string') return false;
-        const trimmed = name.trim();
-        // Must have at least first and last name (3+ chars with space)
-        return trimmed.length >= 3 && trimmed.includes(' ') && trimmed.split(' ').filter(part => part.length > 0).length >= 2;
-      };
-
-      const isValidAddress = (address: string | null): boolean => {
-        if (!address || typeof address !== 'string') return false;
-        const trimmed = address.trim();
-        
-        // If it's too short, it's definitely incomplete
-        if (trimmed.length < 10) return false;
-        
-        try {
-          // Try to parse as structured JSON address
-          const parsed = JSON.parse(trimmed);
-          if (typeof parsed === 'object' && parsed !== null) {
-            const requiredFields = ['street', 'city', 'state', 'zipCode', 'country'];
-            const isComplete = requiredFields.every(field => {
-              const value = parsed[field];
-              return value && typeof value === 'string' && value.trim().length >= 2;
-            });
-            
-            if (isComplete) {
-              // Pre-populate form with existing data
-              setProfileData(prev => ({
-                ...prev,
-                address: {
-                  street: parsed.street || '',
-                  city: parsed.city || '',
-                  state: parsed.state || '',
-                  zipCode: parsed.zipCode || '',
-                  country: parsed.country || 'United States',
-                }
-              }));
-            }
-            
-            return isComplete;
-          }
-        } catch {
-          // If not JSON, treat as plain text - check if it looks complete
-          return trimmed.length >= 15 && (
-            trimmed.includes(',') || 
-            /\d/.test(trimmed) || // Contains numbers
-            /street|st|avenue|ave|road|rd|drive|dr|lane|ln|boulevard|blvd/i.test(trimmed)
-          );
-        }
-        
-        return false;
-      };
-
-      const hasValidFullName = isValidFullName(user.fullName);
-      const hasValidAddress = isValidAddress(user.address);
-      const needsProfileCompletion = !hasValidFullName || !hasValidAddress;
-      
-      console.log('VerificationPage Profile Completion Check:', {
-        fullName: user.fullName,
-        hasValidFullName,
-        address: user.address,
-        hasValidAddress,
-        needsProfileCompletion,
-        showingProfileSetup: needsProfileCompletion
-      });
-      
-      setShowProfileSetup(needsProfileCompletion);
-      
-      // Pre-populate form data
-      setProfileData(prev => ({
-        ...prev,
-        fullName: user.fullName || '',
-        userType: user.userType || 'dumper',
-        phone: user.phone || '',
-      }));
-    }
-  }, [user]);
-
   const handleResendPhone = async () => {
-    if (profileData.phone) {
-      await sendPhoneVerification(profileData.phone);
-      setCountdown(60);
+    if (user?.phone) {
+      try {
+        await sendPhoneVerification(user.phone);
+        setCountdown(60);
+        setError(null);
+      } catch (err: unknown) {
+        const errorMessage = err instanceof Error ? err.message : 'Failed to send verification code';
+        setError(errorMessage);
+      }
     }
   };
 
   const handleVerifyPhone = async (e: React.FormEvent) => {
     e.preventDefault();
     if (phoneCode.length === 6) {
-      await verifyPhoneCode(phoneCode);
-      if (verification.phoneVerified) {
-        setPhoneCode('');
+      try {
+        await verifyPhoneCode(phoneCode);
+        if (verification.phoneVerified) {
+          setPhoneCode('');
+        }
+      } catch (err: unknown) {
+        const errorMessage = err instanceof Error ? err.message : 'Failed to verify code';
+        setError(errorMessage);
       }
     }
   };
 
-  const formatAddress = (address: typeof profileData.address) => {
-    return JSON.stringify({
-      street: address.street.trim(),
-      city: address.city.trim(),
-      state: address.state.trim(),
-      zipCode: address.zipCode.trim(),
-      country: address.country.trim(),
-    });
-  };
+  // Check if verification is complete
+  const isVerificationComplete = verification.phoneVerified;
 
-  const handleProfileUpdate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    setLoading(true);
-    setError(null);
-    
-    try {
-      // CRITICAL FIX: Enhanced validation with specific requirements
-      const trimmedFullName = profileData.fullName.trim();
-      const trimmedStreet = profileData.address.street.trim();
-      const trimmedCity = profileData.address.city.trim();
-      const trimmedState = profileData.address.state.trim();
-      const trimmedZipCode = profileData.address.zipCode.trim();
-      
-      // Validate full name (must have at least first and last name)
-      if (!trimmedFullName || trimmedFullName.length < 3) {
-        throw new Error('Please enter your full name (first and last name)');
-      }
-      
-      if (!trimmedFullName.includes(' ')) {
-        throw new Error('Please enter both your first and last name');
-      }
-      
-      // Validate address components
-      if (!trimmedStreet || trimmedStreet.length < 5) {
-        throw new Error('Please enter a valid street address (at least 5 characters)');
-      }
-      
-      if (!trimmedCity || trimmedCity.length < 2) {
-        throw new Error('Please enter a valid city name');
-      }
-      
-      if (!trimmedState || trimmedState.length < 2) {
-        throw new Error('Please enter a valid state');
-      }
-      
-      if (!trimmedZipCode || trimmedZipCode.length < 3) {
-        throw new Error('Please enter a valid ZIP code');
-      }
-
-      const updateData = {
-        fullName: trimmedFullName,
-        userType: profileData.userType,
-        // CRITICAL FIX: Only include phone if it has content, otherwise set to null
-        phone: profileData.phone.trim() || null,
-        address: formatAddress({
-          street: trimmedStreet,
-          city: trimmedCity,
-          state: trimmedState,
-          zipCode: trimmedZipCode,
-          country: profileData.address.country.trim(),
-        }),
-      };
-
-      console.log('VerificationPage: Updating profile with:', updateData);
-
-      await updateProfile(updateData);
-      
-      console.log('VerificationPage: Profile updated successfully');
-      
-      // CRITICAL FIX: Force a small delay to ensure auth context updates
-      // The App.tsx component should automatically detect the profile is now complete
-      setTimeout(() => {
-        console.log('Profile update propagation complete');
-      }, 100);
-      
-    } catch (error: unknown) {
-      console.error('Error updating profile:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Failed to update profile. Please try again.';
-      setError(errorMessage);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // CRITICAL FIX: Enhanced verification check - only require phone verification if phone exists
-  const hasPhoneNumber = profileData.phone && profileData.phone.trim().length > 0;
-  const isFullyVerified = verification.emailVerified && (!hasPhoneNumber || verification.phoneVerified);
-
-  if (showProfileSetup) {
+  if (isVerificationComplete) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-50 flex items-center justify-center p-4">
-        <div className="max-w-2xl w-full bg-white rounded-2xl shadow-xl p-6 sm:p-8">
-          <div className="text-center mb-8">
-            <div className="p-3 bg-green-100 rounded-full w-16 h-16 mx-auto mb-4 flex items-center justify-center">
-              <User className="h-8 w-8 text-green-600" />
-            </div>
-            <h1 className="text-2xl font-bold text-gray-900">Complete Your Profile</h1>
-            <p className="text-gray-600 mt-2">
-              Please complete your profile to continue using Scrubbed
-            </p>
+        <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 text-center">
+          <div className="p-3 bg-green-100 rounded-full w-16 h-16 mx-auto mb-4 flex items-center justify-center">
+            <CheckCircle className="h-8 w-8 text-green-600" />
           </div>
-
-          {/* Error Display */}
-          {error && (
-            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
-              <div className="flex items-center">
-                <AlertCircle className="h-5 w-5 text-red-500 mr-2" />
-                <p className="text-red-600 text-sm">{error}</p>
-              </div>
-            </div>
-          )}
-
-          <form onSubmit={handleProfileUpdate} className="space-y-6">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Full Name * <span className="text-xs text-gray-500">(First and Last Name)</span>
-              </label>
-              <div className="relative">
-                <User className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
-                <input
-                  type="text"
-                  value={profileData.fullName}
-                  onChange={(e) => setProfileData({ ...profileData, fullName: e.target.value })}
-                  required
-                  minLength={3}
-                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                  placeholder="John Doe"
-                />
-              </div>
-              <p className="mt-1 text-xs text-gray-500">
-                Please enter both your first and last name
-              </p>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                I want to *
-              </label>
-              <select
-                value={profileData.userType}
-                onChange={(e) => setProfileData({ ...profileData, userType: e.target.value as 'dumper' | 'collector' })}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-              >
-                <option value="dumper">Request waste collection services</option>
-                <option value="collector">Provide waste collection services</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Phone Number (Optional)
-              </label>
-              <div className="relative">
-                <Phone className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
-                <input
-                  type="tel"
-                  value={profileData.phone}
-                  onChange={(e) => setProfileData({ ...profileData, phone: e.target.value })}
-                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                  placeholder="+1 (555) 123-4567"
-                />
-              </div>
-              <p className="mt-1 text-xs text-gray-500">
-                Include country code. Phone verification will be required if provided. Leave empty to skip phone verification.
-              </p>
-            </div>
-
-            {/* Enhanced Address Section */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-4">
-                Complete Address * <span className="text-xs text-gray-500">(All fields required)</span>
-              </label>
-              
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">
-                    Street Address *
-                  </label>
-                  <div className="relative">
-                    <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
-                    <input
-                      type="text"
-                      value={profileData.address.street}
-                      onChange={(e) => setProfileData({ 
-                        ...profileData, 
-                        address: { ...profileData.address, street: e.target.value }
-                      })}
-                      required
-                      minLength={5}
-                      className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                      placeholder="123 Main Street, Apt 4B"
-                    />
-                  </div>
-                  <p className="mt-1 text-xs text-gray-500">
-                    Include apartment/unit number if applicable
-                  </p>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">
-                      City *
-                    </label>
-                    <input
-                      type="text"
-                      value={profileData.address.city}
-                      onChange={(e) => setProfileData({ 
-                        ...profileData, 
-                        address: { ...profileData.address, city: e.target.value }
-                      })}
-                      required
-                      minLength={2}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                      placeholder="New York"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">
-                      State/Province *
-                    </label>
-                    <input
-                      type="text"
-                      value={profileData.address.state}
-                      onChange={(e) => setProfileData({ 
-                        ...profileData, 
-                        address: { ...profileData.address, state: e.target.value }
-                      })}
-                      required
-                      minLength={2}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                      placeholder="NY"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">
-                      ZIP/Postal Code *
-                    </label>
-                    <input
-                      type="text"
-                      value={profileData.address.zipCode}
-                      onChange={(e) => setProfileData({ 
-                        ...profileData, 
-                        address: { ...profileData.address, zipCode: e.target.value }
-                      })}
-                      required
-                      minLength={3}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                      placeholder="10001"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">
-                      Country *
-                    </label>
-                    <select
-                      value={profileData.address.country}
-                      onChange={(e) => setProfileData({ 
-                        ...profileData, 
-                        address: { ...profileData.address, country: e.target.value }
-                      })}
-                      required
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                    >
-                      {countries.map((country) => (
-                        <option key={country} value={country}>
-                          {country}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-green-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center"
-            >
-              {loading ? (
-                <>
-                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
-                  Completing Profile...
-                </>
-              ) : (
-                'Complete Profile'
-              )}
-            </button>
-          </form>
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">Phone Verified!</h1>
+          <p className="text-gray-600 mb-4">
+            Your phone number has been successfully verified. Redirecting to your dashboard...
+          </p>
+          <div className="animate-pulse text-sm text-gray-500">
+            Loading dashboard...
+          </div>
         </div>
       </div>
     );
@@ -433,156 +69,107 @@ export const VerificationPage: React.FC = () => {
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-50 flex items-center justify-center p-4">
       <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8">
         <div className="text-center mb-8">
-          <div className={`p-3 rounded-full ${isFullyVerified ? 'bg-green-100' : 'bg-yellow-100'}`}>
-            {isFullyVerified ? (
-              <CheckCircle className="h-8 w-8 text-green-600" />
-            ) : (
-              <AlertCircle className="h-8 w-8 text-yellow-600" />
-            )}
+          <div className="p-3 bg-yellow-100 rounded-full w-16 h-16 mx-auto mb-4 flex items-center justify-center">
+            <Phone className="h-8 w-8 text-yellow-600" />
           </div>
-          <h1 className="text-2xl font-bold text-gray-900">
-            {isFullyVerified ? 'Account Verified!' : 'Verify Your Phone'}
-          </h1>
+          <h1 className="text-2xl font-bold text-gray-900">Verify Your Phone</h1>
           <p className="text-gray-600 mt-2">
-            {isFullyVerified 
-              ? 'Your account is fully verified and ready to use.'
-              : 'Please verify your phone number to continue.'
-            }
+            Please verify your phone number to complete your account setup.
           </p>
         </div>
 
-        {verification.error && (
+        {/* Error Display */}
+        {(verification.error || error) && (
           <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
             <div className="flex items-center">
               <AlertCircle className="h-5 w-5 text-red-500 mr-2" />
-              <p className="text-red-600 text-sm">{verification.error}</p>
+              <p className="text-red-600 text-sm">{verification.error || error}</p>
             </div>
           </div>
         )}
 
-        {/* Phone Verification - Only show if user has a phone number */}
-        {hasPhoneNumber && !isFullyVerified && (
-          <div className="border border-gray-200 rounded-lg p-4 mb-6">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center">
-                <Phone className="h-5 w-5 text-gray-400 mr-2" />
-                <span className="font-medium text-gray-900">Phone Verification</span>
-              </div>
-              {verification.phoneVerified ? (
-                <CheckCircle className="h-5 w-5 text-green-500" />
-              ) : (
-                <AlertCircle className="h-5 w-5 text-yellow-500" />
-              )}
+        {/* Phone Verification */}
+        <div className="border border-gray-200 rounded-lg p-4 mb-6">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center">
+              <Phone className="h-5 w-5 text-gray-400 mr-2" />
+              <span className="font-medium text-gray-900">Phone Number</span>
             </div>
-            
-            <p className="text-sm text-gray-600 mb-3">
-              {profileData.phone}
-            </p>
+            <AlertCircle className="h-5 w-5 text-yellow-500" />
+          </div>
+          
+          <p className="text-sm text-gray-600 mb-3">
+            {user?.phone}
+          </p>
 
-            {verification.phoneVerified ? (
-              <div className="flex items-center text-green-600 text-sm">
-                <CheckCircle className="h-4 w-4 mr-1" />
-                Phone verified successfully
+          {verification.phoneSent ? (
+            <form onSubmit={handleVerifyPhone} className="space-y-3">
+              <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+                <div className="flex items-center text-green-700 text-sm">
+                  <MessageSquare className="h-4 w-4 mr-2" />
+                  <span>SMS sent! Enter the 6-digit code below:</span>
+                </div>
               </div>
-            ) : (
-              <div>
-                {verification.phoneSent ? (
-                  <form onSubmit={handleVerifyPhone} className="space-y-3">
-                    <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
-                      <div className="flex items-center text-green-700 text-sm">
-                        <MessageSquare className="h-4 w-4 mr-2" />
-                        <span>SMS sent! Enter the 6-digit code below:</span>
-                      </div>
+              <input
+                type="text"
+                value={phoneCode}
+                onChange={(e) => setPhoneCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                placeholder="000000"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-center text-lg font-mono tracking-widest"
+                maxLength={6}
+                autoComplete="one-time-code"
+              />
+              <div className="flex space-x-2">
+                <button
+                  type="submit"
+                  disabled={phoneCode.length !== 6 || verification.isVerifying}
+                  className="flex-1 bg-green-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {verification.isVerifying ? (
+                    <div className="flex items-center justify-center">
+                      <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                      Verifying...
                     </div>
-                    <input
-                      type="text"
-                      value={phoneCode}
-                      onChange={(e) => setPhoneCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                      placeholder="000000"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-center text-lg font-mono tracking-widest"
-                      maxLength={6}
-                      autoComplete="one-time-code"
-                    />
-                    <div className="flex space-x-2">
-                      <button
-                        type="submit"
-                        disabled={phoneCode.length !== 6 || verification.isVerifying}
-                        className="flex-1 bg-green-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                      >
-                        {verification.isVerifying ? (
-                          <div className="flex items-center justify-center">
-                            <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                            Verifying...
-                          </div>
-                        ) : (
-                          'Verify Code'
-                        )}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleResendPhone}
-                        disabled={verification.isVerifying || countdown > 0}
-                        className="px-4 py-2 text-green-600 border border-green-600 rounded-lg hover:bg-green-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                      >
-                        {countdown > 0 ? `${countdown}s` : 'Resend'}
-                      </button>
-                    </div>
-                  </form>
-                ) : (
-                  <button
-                    onClick={handleResendPhone}
-                    disabled={verification.isVerifying}
-                    className="flex items-center text-sm text-green-600 hover:text-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <MessageSquare className={`h-4 w-4 mr-1 ${verification.isVerifying ? 'animate-pulse' : ''}`} />
-                    {verification.isVerifying ? 'Sending SMS...' : 'Send verification code'}
-                  </button>
-                )}
+                  ) : (
+                    'Verify Code'
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleResendPhone}
+                  disabled={verification.isVerifying || countdown > 0}
+                  className="px-4 py-2 text-green-600 border border-green-600 rounded-lg hover:bg-green-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {countdown > 0 ? `${countdown}s` : 'Resend'}
+                </button>
               </div>
-            )}
-          </div>
-        )}
+            </form>
+          ) : (
+            <button
+              onClick={handleResendPhone}
+              disabled={verification.isVerifying}
+              className="flex items-center text-sm text-green-600 hover:text-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <MessageSquare className={`h-4 w-4 mr-1 ${verification.isVerifying ? 'animate-pulse' : ''}`} />
+              {verification.isVerifying ? 'Sending SMS...' : 'Send verification code'}
+            </button>
+          )}
+        </div>
 
-        {isFullyVerified && (
-          <div className="p-4 bg-green-50 border border-green-200 rounded-lg animate-fade-in">
-            <div className="flex items-center">
-              <CheckCircle className="h-5 w-5 text-green-500 mr-2" />
-              <span className="text-green-800 font-medium">Account ready!</span>
-            </div>
-            <p className="text-green-700 text-sm mt-1">
-              You can now access all features of the platform.
-            </p>
+        {/* Info */}
+        <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          <div className="flex items-center">
+            <AlertCircle className="h-5 w-5 text-blue-500 mr-2" />
+            <span className="text-blue-800 font-medium">Phone Verification Required</span>
           </div>
-        )}
-
-        {!isFullyVerified && hasPhoneNumber && (
-          <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-            <div className="flex items-center">
-              <AlertCircle className="h-5 w-5 text-yellow-500 mr-2" />
-              <span className="text-yellow-800 font-medium">Phone Verification Required</span>
-            </div>
-            <p className="text-yellow-700 text-sm mt-1">
-              Please verify your phone number to access all features.
-            </p>
-          </div>
-        )}
-
-        {/* Show success message if no phone number provided */}
-        {!hasPhoneNumber && (
-          <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-            <div className="flex items-center">
-              <CheckCircle className="h-5 w-5 text-blue-500 mr-2" />
-              <span className="text-blue-800 font-medium">Profile Complete!</span>
-            </div>
-            <p className="text-blue-700 text-sm mt-1">
-              Your profile is complete. You can add a phone number later in settings if needed.
-            </p>
-          </div>
-        )}
+          <p className="text-blue-700 text-sm mt-1">
+            Please verify your phone number to access all platform features.
+          </p>
+        </div>
 
         {/* SMS Service Notice */}
-        <div className="mt-6 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-          <p className="text-blue-700 text-xs">
+        <div className="mt-6 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+          <p className="text-gray-600 text-xs">
             📱 SMS messages are sent via secure delivery. Standard messaging rates may apply.
           </p>
         </div>
