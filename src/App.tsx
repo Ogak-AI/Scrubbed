@@ -37,68 +37,102 @@ const AppContent: React.FC = () => {
     );
   }
 
-  // CRITICAL FIX: Enhanced profile completion validation
-  const isValidFullName = (name: string | null): boolean => {
-    if (!name) return false;
-    const trimmed = name.trim();
-    return trimmed.length >= 2 && trimmed.includes(' '); // Require at least first and last name
-  };
+  // CRITICAL FIX: More robust profile completion validation
+  const isProfileComplete = (): boolean => {
+    // Check if full name is valid (must have at least first and last name)
+    const hasValidFullName = (): boolean => {
+      if (!user.fullName || typeof user.fullName !== 'string') return false;
+      const trimmed = user.fullName.trim();
+      // Must be at least 3 characters and contain a space (first + last name)
+      return trimmed.length >= 3 && trimmed.includes(' ') && trimmed.split(' ').filter(part => part.length > 0).length >= 2;
+    };
 
-  const isValidAddress = (address: string | null): boolean => {
-    if (!address) return false;
-    const trimmed = address.trim();
-    
-    // Check if it's a JSON address object
-    try {
-      const parsed = JSON.parse(trimmed);
-      if (typeof parsed === 'object' && parsed !== null) {
-        return !!(
-          parsed.street && parsed.street.trim().length >= 5 &&
-          parsed.city && parsed.city.trim().length >= 2 &&
-          parsed.state && parsed.state.trim().length >= 2 &&
-          parsed.zipCode && parsed.zipCode.trim().length >= 3 &&
-          parsed.country && parsed.country.trim().length >= 2
+    // Check if address is valid and complete
+    const hasValidAddress = (): boolean => {
+      if (!user.address || typeof user.address !== 'string') return false;
+      const trimmed = user.address.trim();
+      
+      // If it's less than 10 characters, it's definitely incomplete
+      if (trimmed.length < 10) return false;
+      
+      try {
+        // Try to parse as JSON (structured address)
+        const parsed = JSON.parse(trimmed);
+        if (typeof parsed === 'object' && parsed !== null) {
+          const requiredFields = ['street', 'city', 'state', 'zipCode', 'country'];
+          return requiredFields.every(field => {
+            const value = parsed[field];
+            return value && typeof value === 'string' && value.trim().length >= 2;
+          });
+        }
+      } catch {
+        // If not JSON, treat as plain text address
+        // A complete address should have at least 15 characters and contain common address indicators
+        return trimmed.length >= 15 && (
+          trimmed.includes(',') || 
+          /\d/.test(trimmed) || // Contains numbers
+          /street|st|avenue|ave|road|rd|drive|dr|lane|ln|boulevard|blvd/i.test(trimmed)
         );
       }
-    } catch {
-      // If not JSON, treat as plain text address
-      return trimmed.length >= 10; // Minimum reasonable address length
-    }
+      
+      return false;
+    };
+
+    const validFullName = hasValidFullName();
+    const validAddress = hasValidAddress();
     
-    return false;
+    console.log('App.tsx Profile Completion Check:', {
+      fullName: user.fullName,
+      validFullName,
+      address: user.address,
+      validAddress,
+      isComplete: validFullName && validAddress
+    });
+    
+    return validFullName && validAddress;
   };
 
-  // CRITICAL FIX: Proper phone validation - only check if phone exists and has content
-  const hasPhoneNumber = user.phone && user.phone.trim().length > 0;
-  const needsPhoneVerification = hasPhoneNumber && !verification.phoneVerified;
+  // CRITICAL FIX: Enhanced phone verification logic
+  const needsPhoneVerification = (): boolean => {
+    // Only require phone verification if:
+    // 1. User has provided a phone number
+    // 2. The phone number is not empty/null
+    // 3. The phone is not yet verified
+    const hasPhoneNumber = user.phone && typeof user.phone === 'string' && user.phone.trim().length > 0;
+    const phoneNotVerified = !verification.phoneVerified;
+    
+    const needsVerification = hasPhoneNumber && phoneNotVerified;
+    
+    console.log('App.tsx Phone Verification Check:', {
+      phone: user.phone,
+      hasPhoneNumber,
+      phoneVerified: verification.phoneVerified,
+      needsVerification
+    });
+    
+    return needsVerification;
+  };
 
-  const hasValidFullName = isValidFullName(user.fullName);
-  const hasValidAddress = isValidAddress(user.address);
-  const needsProfileCompletion = !hasValidFullName || !hasValidAddress;
+  const profileComplete = isProfileComplete();
+  const phoneVerificationNeeded = needsPhoneVerification();
   
-  console.log('App.tsx FINAL Profile Check:', {
-    fullName: user.fullName,
-    hasValidFullName,
-    address: user.address,
-    hasValidAddress,
-    needsProfileCompletion,
-    phone: user.phone,
-    hasPhoneNumber,
-    phoneVerified: verification.phoneVerified,
-    needsPhoneVerification,
-    finalDecision: needsProfileCompletion || needsPhoneVerification ? 'SHOW_VERIFICATION' : 'SHOW_DASHBOARD'
+  // CRITICAL FIX: Only show verification page if profile is incomplete OR phone verification is needed
+  const shouldShowVerification = !profileComplete || phoneVerificationNeeded;
+  
+  console.log('App.tsx Final Decision:', {
+    profileComplete,
+    phoneVerificationNeeded,
+    shouldShowVerification,
+    decision: shouldShowVerification ? 'SHOW_VERIFICATION_PAGE' : 'SHOW_DASHBOARD'
   });
   
-  // CRITICAL FIX: Only show verification if profile is incomplete OR phone needs verification
-  // If phone is empty/null, skip phone verification entirely
-  if (needsProfileCompletion || needsPhoneVerification) {
-    console.log('Showing verification page - Profile incomplete or phone verification needed');
+  if (shouldShowVerification) {
     return <VerificationPage />;
   }
 
   // Get the appropriate dashboard component based on user type
   const getDashboardComponent = () => {
-    console.log('User profile is complete, rendering dashboard for user type:', user.userType);
+    console.log('Profile is complete and verified, showing dashboard for user type:', user.userType);
     switch (user.userType) {
       case 'dumper':
         return <DumperDashboard />;
@@ -112,7 +146,6 @@ const AppContent: React.FC = () => {
   };
 
   // User is authenticated and profile is complete - show their dashboard
-  console.log('User is fully authenticated and verified, showing dashboard');
   return (
     <Router>
       <Routes>

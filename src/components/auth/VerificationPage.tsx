@@ -32,32 +32,56 @@ export const VerificationPage: React.FC = () => {
     }
   }, [countdown]);
 
-  // CRITICAL FIX: Enhanced profile completion check with detailed validation
+  // CRITICAL FIX: More precise profile completion detection
   useEffect(() => {
     if (user) {
       const isValidFullName = (name: string | null): boolean => {
-        if (!name) return false;
+        if (!name || typeof name !== 'string') return false;
         const trimmed = name.trim();
-        return trimmed.length >= 2 && trimmed.includes(' '); // Require first and last name
+        // Must have at least first and last name (3+ chars with space)
+        return trimmed.length >= 3 && trimmed.includes(' ') && trimmed.split(' ').filter(part => part.length > 0).length >= 2;
       };
 
       const isValidAddress = (address: string | null): boolean => {
-        if (!address) return false;
+        if (!address || typeof address !== 'string') return false;
         const trimmed = address.trim();
         
+        // If it's too short, it's definitely incomplete
+        if (trimmed.length < 10) return false;
+        
         try {
+          // Try to parse as structured JSON address
           const parsed = JSON.parse(trimmed);
           if (typeof parsed === 'object' && parsed !== null) {
-            return !!(
-              parsed.street && parsed.street.trim().length >= 5 &&
-              parsed.city && parsed.city.trim().length >= 2 &&
-              parsed.state && parsed.state.trim().length >= 2 &&
-              parsed.zipCode && parsed.zipCode.trim().length >= 3 &&
-              parsed.country && parsed.country.trim().length >= 2
-            );
+            const requiredFields = ['street', 'city', 'state', 'zipCode', 'country'];
+            const isComplete = requiredFields.every(field => {
+              const value = parsed[field];
+              return value && typeof value === 'string' && value.trim().length >= 2;
+            });
+            
+            if (isComplete) {
+              // Pre-populate form with existing data
+              setProfileData(prev => ({
+                ...prev,
+                address: {
+                  street: parsed.street || '',
+                  city: parsed.city || '',
+                  state: parsed.state || '',
+                  zipCode: parsed.zipCode || '',
+                  country: parsed.country || 'United States',
+                }
+              }));
+            }
+            
+            return isComplete;
           }
         } catch {
-          return trimmed.length >= 10;
+          // If not JSON, treat as plain text - check if it looks complete
+          return trimmed.length >= 15 && (
+            trimmed.includes(',') || 
+            /\d/.test(trimmed) || // Contains numbers
+            /street|st|avenue|ave|road|rd|drive|dr|lane|ln|boulevard|blvd/i.test(trimmed)
+          );
         }
         
         return false;
@@ -67,7 +91,7 @@ export const VerificationPage: React.FC = () => {
       const hasValidAddress = isValidAddress(user.address);
       const needsProfileCompletion = !hasValidFullName || !hasValidAddress;
       
-      console.log('VerificationPage Enhanced Profile Check:', {
+      console.log('VerificationPage Profile Completion Check:', {
         fullName: user.fullName,
         hasValidFullName,
         address: user.address,
@@ -78,33 +102,13 @@ export const VerificationPage: React.FC = () => {
       
       setShowProfileSetup(needsProfileCompletion);
       
-      // Parse existing address if available and profile needs completion
-      if (user.address && needsProfileCompletion) {
-        try {
-          const parsed = JSON.parse(user.address);
-          if (typeof parsed === 'object' && parsed !== null) {
-            setProfileData(prev => ({
-              ...prev,
-              address: {
-                street: parsed.street || '',
-                city: parsed.city || '',
-                state: parsed.state || '',
-                zipCode: parsed.zipCode || '',
-                country: parsed.country || 'United States',
-              }
-            }));
-          }
-        } catch {
-          // If parsing fails, treat as plain text address
-          setProfileData(prev => ({
-            ...prev,
-            address: {
-              ...prev.address,
-              street: user.address || '',
-            }
-          }));
-        }
-      }
+      // Pre-populate form data
+      setProfileData(prev => ({
+        ...prev,
+        fullName: user.fullName || '',
+        userType: user.userType || 'dumper',
+        phone: user.phone || '',
+      }));
     }
   }, [user]);
 
@@ -137,8 +141,6 @@ export const VerificationPage: React.FC = () => {
 
   const handleProfileUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    console.log('Profile update started with data:', profileData);
     
     setLoading(true);
     setError(null);
@@ -177,8 +179,6 @@ export const VerificationPage: React.FC = () => {
         throw new Error('Please enter a valid ZIP code');
       }
 
-      console.log('Validation passed, updating profile...');
-
       const updateData = {
         fullName: trimmedFullName,
         userType: profileData.userType,
@@ -193,18 +193,17 @@ export const VerificationPage: React.FC = () => {
         }),
       };
 
-      console.log('Calling updateProfile with:', updateData);
+      console.log('VerificationPage: Updating profile with:', updateData);
 
       await updateProfile(updateData);
       
-      console.log('Profile updated successfully - waiting for state to propagate...');
+      console.log('VerificationPage: Profile updated successfully');
       
-      // CRITICAL FIX: Add a longer delay to ensure the auth context updates properly
+      // CRITICAL FIX: Force a small delay to ensure auth context updates
+      // The App.tsx component should automatically detect the profile is now complete
       setTimeout(() => {
-        console.log('Profile update complete, checking if redirect happens...');
-        // The App.tsx component should automatically detect the profile is now complete
-        // and redirect to the dashboard. If this doesn't happen, there might be a caching issue.
-      }, 500);
+        console.log('Profile update propagation complete');
+      }, 100);
       
     } catch (error: unknown) {
       console.error('Error updating profile:', error);
