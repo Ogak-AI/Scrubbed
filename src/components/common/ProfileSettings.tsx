@@ -87,41 +87,105 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
     });
   };
 
+  // CRITICAL FIX: Enhanced form validation that allows optional phone
+  const validateForm = () => {
+    const errors: string[] = [];
+    
+    if (!formData.fullName.trim()) {
+      errors.push('Please enter your full name');
+    }
+    
+    if (!formData.address.street.trim()) {
+      errors.push('Please enter your street address');
+    }
+    
+    if (!formData.address.city.trim()) {
+      errors.push('Please enter your city');
+    }
+    
+    if (!formData.address.state.trim()) {
+      errors.push('Please enter your state');
+    }
+    
+    if (!formData.address.zipCode.trim()) {
+      errors.push('Please enter your ZIP code');
+    }
+
+    // CRITICAL FIX: Only validate phone format if phone is provided (not empty)
+    const phoneValue = formData.phone.trim();
+    if (phoneValue && !/^\+?[\d\s\-\(\)]+$/.test(phoneValue)) {
+      errors.push('Please enter a valid phone number format');
+    }
+
+    return errors;
+  };
+
+  // CRITICAL FIX: Check if form has changes (including when phone is removed)
+  const hasChanges = () => {
+    const currentAddress = formatAddress(formData.address);
+    const originalAddress = user?.address || '';
+    
+    // Normalize phone values for comparison (treat empty string and null as same)
+    const currentPhone = formData.phone.trim() || null;
+    const originalPhone = user?.phone || null;
+    
+    return (
+      formData.fullName.trim() !== (user?.fullName || '') ||
+      currentPhone !== originalPhone ||
+      currentAddress !== originalAddress
+    );
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // CRITICAL FIX: Validate form before submission
+    const validationErrors = validateForm();
+    if (validationErrors.length > 0) {
+      setError(validationErrors.join('. '));
+      return;
+    }
+
+    // CRITICAL FIX: Check if there are actually changes to save
+    if (!hasChanges()) {
+      setError('No changes detected. Please modify your information before saving.');
+      return;
+    }
+
     setLoading(true);
     setError(null);
     setSuccess(false);
 
-    // Validate required fields
-    if (!formData.fullName.trim()) {
-      setError('Please enter your full name');
-      setLoading(false);
-      return;
-    }
-    
-    if (!formData.address.street.trim() || !formData.address.city.trim() || 
-        !formData.address.state.trim() || !formData.address.zipCode.trim()) {
-      setError('Please complete all address fields');
-      setLoading(false);
-      return;
-    }
-
     try {
-      await updateProfile({
+      console.log('ProfileSettings: Starting update with data:', {
         fullName: formData.fullName.trim(),
-        phone: formData.phone.trim() || null,
+        phone: formData.phone.trim() || null, // CRITICAL FIX: Convert empty string to null
         address: formatAddress(formData.address),
       });
+
+      // CRITICAL FIX: Call updateProfile with proper data structure
+      await updateProfile({
+        fullName: formData.fullName.trim(),
+        phone: formData.phone.trim() || null, // CRITICAL FIX: Handle empty phone as null
+        address: formatAddress(formData.address),
+      });
+
+      console.log('ProfileSettings: Profile updated successfully');
       setSuccess(true);
       
-      // Close after showing success message
+      // Clear error state on success
+      setError(null);
+      
+      // Show success message for 2 seconds, then close
       setTimeout(() => {
         onClose();
       }, 2000);
+      
     } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to update profile';
+      console.error('ProfileSettings: Error updating profile:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Failed to update profile. Please try again.';
       setError(errorMessage);
+      setSuccess(false);
     } finally {
       setLoading(false);
     }
@@ -249,7 +313,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
                   <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
                     <div className="flex items-center">
                       <CheckCircle className="h-5 w-5 text-green-500 mr-2" />
-                      <p className="text-green-700 text-sm">Profile updated successfully!</p>
+                      <p className="text-green-700 text-sm font-medium">Profile updated successfully! Changes will be applied shortly.</p>
                     </div>
                   </div>
                 )}
@@ -338,10 +402,10 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
                     </p>
                   </div>
 
-                  {/* Phone */}
+                  {/* Phone - CRITICAL FIX: Made truly optional */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Phone Number
+                      Phone Number (Optional)
                     </label>
                     <div className="relative">
                       <Phone className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
@@ -354,7 +418,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
                       />
                     </div>
                     <p className="mt-1 text-xs text-gray-500">
-                      Include country code. Phone verification will be required if changed.
+                      Include country code. Phone verification will be required if provided. Leave empty if you don't want to provide a phone number.
                     </p>
                   </div>
 
@@ -491,7 +555,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
                     </button>
                     <button
                       type="submit"
-                      disabled={loading}
+                      disabled={loading || !hasChanges()}
                       className="flex-1 bg-green-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center"
                     >
                       {loading ? (
@@ -507,6 +571,15 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
                       )}
                     </button>
                   </div>
+                  
+                  {/* CRITICAL FIX: Show helpful message when no changes detected */}
+                  {!hasChanges() && !loading && (
+                    <div className="text-center">
+                      <p className="text-sm text-gray-500">
+                        Make changes to your information above to enable the save button
+                      </p>
+                    </div>
+                  )}
                 </form>
               </div>
             ) : (
