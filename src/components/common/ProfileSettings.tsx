@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ArrowLeft, User, Mail, Phone, MapPin, Save, AlertCircle, CheckCircle, Eye } from 'lucide-react';
+import { ArrowLeft, User, Mail, Phone, MapPin, Save, AlertCircle, CheckCircle, Eye, Trash2 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 
 interface ProfileSettingsProps {
@@ -7,18 +7,43 @@ interface ProfileSettingsProps {
 }
 
 export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => {
-  const { user, updateProfile } = useAuth();
+  const { user, updateProfile, signOut } = useAuth();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [showPersonalInfo, setShowPersonalInfo] = useState(true);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
   
   const [formData, setFormData] = useState({
     fullName: user?.fullName || '',
     email: user?.email || '',
     phone: user?.phone || '',
-    address: user?.address || '',
-    // Remove userType from formData since it shouldn't be editable
+    address: (() => {
+      try {
+        if (user?.address) {
+          const parsed = JSON.parse(user.address);
+          if (typeof parsed === 'object') {
+            return {
+              street: parsed.street || '',
+              city: parsed.city || '',
+              state: parsed.state || '',
+              zipCode: parsed.zipCode || '',
+              country: parsed.country || 'United States',
+            };
+          }
+        }
+      } catch {
+        // If parsing fails, treat as plain text
+      }
+      return {
+        street: user?.address || '',
+        city: '',
+        state: '',
+        zipCode: '',
+        country: 'United States',
+      };
+    })(),
   });
 
   // Parse first and last name from full name
@@ -49,18 +74,41 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
     }));
   };
 
+  const formatAddress = (address: typeof formData.address) => {
+    return JSON.stringify({
+      street: address.street.trim(),
+      city: address.city.trim(),
+      state: address.state.trim(),
+      zipCode: address.zipCode.trim(),
+      country: address.country.trim(),
+    });
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
     setSuccess(false);
 
+    // Validate required fields
+    if (!formData.fullName.trim()) {
+      setError('Please enter your full name');
+      setLoading(false);
+      return;
+    }
+    
+    if (!formData.address.street.trim() || !formData.address.city.trim() || 
+        !formData.address.state.trim() || !formData.address.zipCode.trim()) {
+      setError('Please complete all address fields');
+      setLoading(false);
+      return;
+    }
+
     try {
-      // Only update the fields that are editable (exclude userType)
       await updateProfile({
-        fullName: formData.fullName,
-        phone: formData.phone,
-        address: formData.address,
+        fullName: formData.fullName.trim(),
+        phone: formData.phone.trim() || null,
+        address: formatAddress(formData.address),
       });
       setSuccess(true);
       
@@ -80,6 +128,35 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
     setFormData(prev => ({ ...prev, [field]: value }));
     if (error) setError(null);
     if (success) setSuccess(false);
+  };
+
+  const handleAddressChange = (field: string, value: string) => {
+    setFormData(prev => ({
+      ...prev,
+      address: { ...prev.address, [field]: value }
+    }));
+    if (error) setError(null);
+    if (success) setSuccess(false);
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!window.confirm('Are you absolutely sure you want to delete your account? This action cannot be undone and will permanently delete all your data.')) {
+      return;
+    }
+
+    setDeleteLoading(true);
+    try {
+      // Note: In a real implementation, you would call a backend API to delete the account
+      // For now, we'll just sign out the user
+      alert('Account deletion is not yet implemented. Please contact support to delete your account.');
+      await signOut();
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to delete account';
+      setError(errorMessage);
+    } finally {
+      setDeleteLoading(false);
+      setShowDeleteConfirm(false);
+    }
   };
 
   // Helper function to get display name for account type
@@ -142,7 +219,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
                   }`}
                 >
                   <Eye className="h-4 w-4 inline mr-2" />
-                  Privacy
+                  Privacy & Security
                 </button>
               </nav>
             </div>
@@ -278,20 +355,95 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
                     </p>
                   </div>
 
-                  {/* Address */}
+                  {/* Billing Address */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Address
+                    <label className="block text-sm font-medium text-gray-700 mb-4">
+                      Billing Address *
                     </label>
-                    <div className="relative">
-                      <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
-                      <input
-                        type="text"
-                        value={formData.address}
-                        onChange={(e) => handleInputChange('address', e.target.value)}
-                        className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                        placeholder="Enter your address"
-                      />
+                    
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">
+                          Street Address *
+                        </label>
+                        <div className="relative">
+                          <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                          <input
+                            type="text"
+                            value={formData.address.street}
+                            onChange={(e) => handleAddressChange('street', e.target.value)}
+                            required
+                            className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                            placeholder="123 Main Street, Apt 4B"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">
+                            City *
+                          </label>
+                          <input
+                            type="text"
+                            value={formData.address.city}
+                            onChange={(e) => handleAddressChange('city', e.target.value)}
+                            required
+                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                            placeholder="New York"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">
+                            State *
+                          </label>
+                          <input
+                            type="text"
+                            value={formData.address.state}
+                            onChange={(e) => handleAddressChange('state', e.target.value)}
+                            required
+                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                            placeholder="NY"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">
+                            ZIP Code *
+                          </label>
+                          <input
+                            type="text"
+                            value={formData.address.zipCode}
+                            onChange={(e) => handleAddressChange('zipCode', e.target.value)}
+                            required
+                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                            placeholder="10001"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">
+                            Country *
+                          </label>
+                          <select
+                            value={formData.address.country}
+                            onChange={(e) => handleAddressChange('country', e.target.value)}
+                            required
+                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                          >
+                            <option value="United States">United States</option>
+                            <option value="Canada">Canada</option>
+                            <option value="United Kingdom">United Kingdom</option>
+                            <option value="Australia">Australia</option>
+                            <option value="Germany">Germany</option>
+                            <option value="France">France</option>
+                            <option value="Other">Other</option>
+                          </select>
+                        </div>
+                      </div>
                     </div>
                   </div>
 
@@ -357,12 +509,12 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
                 </form>
               </div>
             ) : (
-              /* Privacy Settings */
+              /* Privacy & Security Settings */
               <div className="bg-white rounded-xl border border-gray-200 p-6">
                 <div className="flex items-center justify-between mb-6">
                   <div>
-                    <h2 className="text-xl font-semibold text-gray-900">Privacy Settings</h2>
-                    <p className="text-sm text-gray-600 mt-1">Manage your privacy and data preferences</p>
+                    <h2 className="text-xl font-semibold text-gray-900">Privacy & Security</h2>
+                    <p className="text-sm text-gray-600 mt-1">Manage your privacy and security preferences</p>
                   </div>
                   <div className="flex items-center space-x-2">
                     <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
@@ -411,14 +563,60 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
                     </div>
                   </div>
 
-                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                    <h3 className="font-medium text-yellow-800 mb-2">Account Deletion</h3>
-                    <p className="text-yellow-700 text-sm mb-3">
-                      If you wish to delete your account and all associated data, please contact our support team.
+                  {/* Account Deletion Section */}
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                    <h3 className="font-medium text-red-800 mb-2 flex items-center">
+                      <Trash2 className="h-5 w-5 mr-2" />
+                      Delete Account
+                    </h3>
+                    <p className="text-red-700 text-sm mb-4">
+                      Permanently delete your account and all associated data. This action cannot be undone.
                     </p>
-                    <button className="text-yellow-700 hover:text-yellow-800 font-medium text-sm underline">
-                      Contact Support
-                    </button>
+                    
+                    {!showDeleteConfirm ? (
+                      <button
+                        onClick={() => setShowDeleteConfirm(true)}
+                        className="bg-red-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-red-700 transition-colors text-sm flex items-center"
+                      >
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        Delete My Account
+                      </button>
+                    ) : (
+                      <div className="space-y-3">
+                        <div className="bg-red-100 border border-red-300 rounded-lg p-3">
+                          <p className="text-red-800 text-sm font-medium mb-2">⚠️ Are you absolutely sure?</p>
+                          <p className="text-red-700 text-sm">
+                            This will permanently delete your account, all your data, and cannot be undone.
+                          </p>
+                        </div>
+                        <div className="flex space-x-3">
+                          <button
+                            onClick={handleDeleteAccount}
+                            disabled={deleteLoading}
+                            className="bg-red-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-red-700 disabled:opacity-50 transition-colors text-sm flex items-center"
+                          >
+                            {deleteLoading ? (
+                              <>
+                                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                                Deleting...
+                              </>
+                            ) : (
+                              <>
+                                <Trash2 className="h-4 w-4 mr-2" />
+                                Yes, Delete Forever
+                              </>
+                            )}
+                          </button>
+                          <button
+                            onClick={() => setShowDeleteConfirm(false)}
+                            disabled={deleteLoading}
+                            className="bg-gray-300 text-gray-700 px-4 py-2 rounded-lg font-medium hover:bg-gray-400 disabled:opacity-50 transition-colors text-sm"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

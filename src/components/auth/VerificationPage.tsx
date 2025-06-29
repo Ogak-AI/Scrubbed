@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Phone, CheckCircle, AlertCircle, RefreshCw, MessageSquare, User, MapPin } from 'lucide-react';
+import { Phone, CheckCircle, AlertCircle, RefreshCw, MessageSquare, User, MapPin, Trash2 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 
 export const VerificationPage: React.FC = () => {
@@ -11,7 +11,13 @@ export const VerificationPage: React.FC = () => {
     fullName: user?.fullName || '',
     userType: user?.userType || 'dumper' as 'dumper' | 'collector',
     phone: user?.phone || '',
-    address: user?.address || '',
+    address: {
+      street: '',
+      city: '',
+      state: '',
+      zipCode: '',
+      country: 'United States',
+    },
   });
 
   useEffect(() => {
@@ -23,8 +29,37 @@ export const VerificationPage: React.FC = () => {
 
   // Check if user needs to complete profile setup
   useEffect(() => {
-    if (user && (!user.fullName || !user.userType)) {
-      setShowProfileSetup(true);
+    if (user) {
+      const needsProfileCompletion = !user.fullName || !user.address;
+      setShowProfileSetup(needsProfileCompletion);
+      
+      // Parse existing address if available
+      if (user.address && needsProfileCompletion) {
+        try {
+          const parsed = JSON.parse(user.address);
+          if (typeof parsed === 'object') {
+            setProfileData(prev => ({
+              ...prev,
+              address: {
+                street: parsed.street || '',
+                city: parsed.city || '',
+                state: parsed.state || '',
+                zipCode: parsed.zipCode || '',
+                country: parsed.country || 'United States',
+              }
+            }));
+          }
+        } catch {
+          // If parsing fails, treat as plain text address
+          setProfileData(prev => ({
+            ...prev,
+            address: {
+              ...prev.address,
+              street: user.address || '',
+            }
+          }));
+        }
+      }
     }
   }, [user]);
 
@@ -45,13 +80,42 @@ export const VerificationPage: React.FC = () => {
     }
   };
 
+  const formatAddress = (address: typeof profileData.address) => {
+    return JSON.stringify({
+      street: address.street.trim(),
+      city: address.city.trim(),
+      state: address.state.trim(),
+      zipCode: address.zipCode.trim(),
+      country: address.country.trim(),
+    });
+  };
+
   const handleProfileUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Validate required fields
+    if (!profileData.fullName.trim()) {
+      alert('Please enter your full name');
+      return;
+    }
+    
+    if (!profileData.address.street.trim() || !profileData.address.city.trim() || 
+        !profileData.address.state.trim() || !profileData.address.zipCode.trim()) {
+      alert('Please complete all address fields');
+      return;
+    }
+
     try {
-      await updateProfile(profileData);
+      await updateProfile({
+        fullName: profileData.fullName.trim(),
+        userType: profileData.userType,
+        phone: profileData.phone.trim() || null,
+        address: formatAddress(profileData.address),
+      });
       setShowProfileSetup(false);
     } catch (error) {
       console.error('Error updating profile:', error);
+      alert('Failed to update profile. Please try again.');
     }
   };
 
@@ -60,18 +124,18 @@ export const VerificationPage: React.FC = () => {
   if (showProfileSetup) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-50 flex items-center justify-center p-4">
-        <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8">
+        <div className="max-w-2xl w-full bg-white rounded-2xl shadow-xl p-6 sm:p-8">
           <div className="text-center mb-8">
             <div className="p-3 bg-green-100 rounded-full w-16 h-16 mx-auto mb-4 flex items-center justify-center">
               <User className="h-8 w-8 text-green-600" />
             </div>
             <h1 className="text-2xl font-bold text-gray-900">Complete Your Profile</h1>
             <p className="text-gray-600 mt-2">
-              Let's set up your account to get started
+              Please complete your profile to continue using Scrubbed
             </p>
           </div>
 
-          <form onSubmit={handleProfileUpdate} className="space-y-4">
+          <form onSubmit={handleProfileUpdate} className="space-y-6">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Full Name *
@@ -122,19 +186,110 @@ export const VerificationPage: React.FC = () => {
               </p>
             </div>
 
+            {/* Billing Address Format */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Address (Optional)
+              <label className="block text-sm font-medium text-gray-700 mb-4">
+                Billing Address *
               </label>
-              <div className="relative">
-                <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
-                <input
-                  type="text"
-                  value={profileData.address}
-                  onChange={(e) => setProfileData({ ...profileData, address: e.target.value })}
-                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                  placeholder="Enter your address"
-                />
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">
+                    Street Address *
+                  </label>
+                  <div className="relative">
+                    <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                    <input
+                      type="text"
+                      value={profileData.address.street}
+                      onChange={(e) => setProfileData({ 
+                        ...profileData, 
+                        address: { ...profileData.address, street: e.target.value }
+                      })}
+                      required
+                      className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                      placeholder="123 Main Street, Apt 4B"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">
+                      City *
+                    </label>
+                    <input
+                      type="text"
+                      value={profileData.address.city}
+                      onChange={(e) => setProfileData({ 
+                        ...profileData, 
+                        address: { ...profileData.address, city: e.target.value }
+                      })}
+                      required
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                      placeholder="New York"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">
+                      State *
+                    </label>
+                    <input
+                      type="text"
+                      value={profileData.address.state}
+                      onChange={(e) => setProfileData({ 
+                        ...profileData, 
+                        address: { ...profileData.address, state: e.target.value }
+                      })}
+                      required
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                      placeholder="NY"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">
+                      ZIP Code *
+                    </label>
+                    <input
+                      type="text"
+                      value={profileData.address.zipCode}
+                      onChange={(e) => setProfileData({ 
+                        ...profileData, 
+                        address: { ...profileData.address, zipCode: e.target.value }
+                      })}
+                      required
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                      placeholder="10001"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">
+                      Country *
+                    </label>
+                    <select
+                      value={profileData.address.country}
+                      onChange={(e) => setProfileData({ 
+                        ...profileData, 
+                        address: { ...profileData.address, country: e.target.value }
+                      })}
+                      required
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                    >
+                      <option value="United States">United States</option>
+                      <option value="Canada">Canada</option>
+                      <option value="United Kingdom">United Kingdom</option>
+                      <option value="Australia">Australia</option>
+                      <option value="Germany">Germany</option>
+                      <option value="France">France</option>
+                      <option value="Other">Other</option>
+                    </select>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -142,7 +297,7 @@ export const VerificationPage: React.FC = () => {
               type="submit"
               className="w-full bg-green-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-green-700 transition-colors"
             >
-              Continue
+              Complete Profile
             </button>
           </form>
         </div>

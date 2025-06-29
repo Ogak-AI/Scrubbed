@@ -42,10 +42,14 @@ const AppContent: React.FC = () => {
   console.log('Current user:', user);
   console.log('User type:', user.userType);
 
+  // MANDATORY PROFILE COMPLETION CHECK
+  const needsProfileCompletion = !user.fullName || !user.address;
+  
   // Check if user needs phone verification (only if they have a phone number)
   const needsVerification = user.phone && !verification.phoneVerified;
   
-  if (needsVerification) {
+  // If user needs profile completion OR phone verification, show verification page
+  if (needsProfileCompletion || needsVerification) {
     return <VerificationPage />;
   }
 
@@ -69,7 +73,7 @@ const AppContent: React.FC = () => {
     }
   };
 
-  // User is authenticated - show their dashboard
+  // User is authenticated and profile is complete - show their dashboard
   return (
     <Router>
       <Routes>
