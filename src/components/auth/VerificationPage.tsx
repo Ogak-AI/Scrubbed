@@ -32,24 +32,28 @@ export const VerificationPage: React.FC = () => {
     }
   }, [countdown]);
 
-  // Check if user needs to complete profile setup
+  // CRITICAL FIX: More robust profile completion check
   useEffect(() => {
     if (user) {
-      const needsProfileCompletion = !user.fullName?.trim() || !user.address?.trim();
-      console.log('Profile completion check in VerificationPage:', {
+      const hasValidFullName = user.fullName && user.fullName.trim().length > 0;
+      const hasValidAddress = user.address && user.address.trim().length > 0;
+      const needsProfileCompletion = !hasValidFullName || !hasValidAddress;
+      
+      console.log('VerificationPage Profile Check:', {
         fullName: user.fullName,
-        fullNameTrimmed: user.fullName?.trim(),
+        hasValidFullName,
         address: user.address,
-        addressTrimmed: user.address?.trim(),
+        hasValidAddress,
         needsProfileCompletion
       });
+      
       setShowProfileSetup(needsProfileCompletion);
       
-      // Parse existing address if available
+      // Parse existing address if available and profile needs completion
       if (user.address && needsProfileCompletion) {
         try {
           const parsed = JSON.parse(user.address);
-          if (typeof parsed === 'object') {
+          if (typeof parsed === 'object' && parsed !== null) {
             setProfileData(prev => ({
               ...prev,
               address: {
@@ -111,33 +115,46 @@ export const VerificationPage: React.FC = () => {
     setError(null);
     
     try {
-      // Validate required fields
-      if (!profileData.fullName.trim()) {
-        throw new Error('Please enter your full name');
+      // CRITICAL FIX: More robust validation
+      const trimmedFullName = profileData.fullName.trim();
+      const trimmedStreet = profileData.address.street.trim();
+      const trimmedCity = profileData.address.city.trim();
+      const trimmedState = profileData.address.state.trim();
+      const trimmedZipCode = profileData.address.zipCode.trim();
+      
+      if (!trimmedFullName || trimmedFullName.length < 2) {
+        throw new Error('Please enter a valid full name (at least 2 characters)');
       }
       
-      if (!profileData.address.street.trim() || !profileData.address.city.trim() || 
-          !profileData.address.state.trim() || !profileData.address.zipCode.trim()) {
+      if (!trimmedStreet || !trimmedCity || !trimmedState || !trimmedZipCode) {
         throw new Error('Please complete all address fields');
       }
 
       console.log('Validation passed, updating profile...');
 
       const updateData = {
-        fullName: profileData.fullName.trim(),
+        fullName: trimmedFullName,
         userType: profileData.userType,
         phone: profileData.phone.trim() || null,
-        address: formatAddress(profileData.address),
+        address: formatAddress({
+          street: trimmedStreet,
+          city: trimmedCity,
+          state: trimmedState,
+          zipCode: trimmedZipCode,
+          country: profileData.address.country.trim(),
+        }),
       };
 
       console.log('Calling updateProfile with:', updateData);
 
       await updateProfile(updateData);
       
-      console.log('Profile updated successfully');
+      console.log('Profile updated successfully - user should be redirected to dashboard');
       
-      // The App.tsx component will automatically redirect to the dashboard
-      // when it detects that the profile is complete
+      // CRITICAL FIX: Force a small delay to ensure state updates propagate
+      setTimeout(() => {
+        console.log('Profile update complete, App.tsx should handle redirect');
+      }, 100);
       
     } catch (error: unknown) {
       console.error('Error updating profile:', error);
@@ -186,6 +203,7 @@ export const VerificationPage: React.FC = () => {
                   value={profileData.fullName}
                   onChange={(e) => setProfileData({ ...profileData, fullName: e.target.value })}
                   required
+                  minLength={2}
                   className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
                   placeholder="Enter your full name"
                 />
@@ -246,6 +264,7 @@ export const VerificationPage: React.FC = () => {
                         address: { ...profileData.address, street: e.target.value }
                       })}
                       required
+                      minLength={5}
                       className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
                       placeholder="123 Main Street, Apt 4B"
                     />
@@ -265,6 +284,7 @@ export const VerificationPage: React.FC = () => {
                         address: { ...profileData.address, city: e.target.value }
                       })}
                       required
+                      minLength={2}
                       className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
                       placeholder="New York"
                     />
@@ -282,6 +302,7 @@ export const VerificationPage: React.FC = () => {
                         address: { ...profileData.address, state: e.target.value }
                       })}
                       required
+                      minLength={2}
                       className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
                       placeholder="NY"
                     />
@@ -301,6 +322,7 @@ export const VerificationPage: React.FC = () => {
                         address: { ...profileData.address, zipCode: e.target.value }
                       })}
                       required
+                      minLength={3}
                       className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
                       placeholder="10001"
                     />

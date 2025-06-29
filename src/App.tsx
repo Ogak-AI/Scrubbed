@@ -38,19 +38,34 @@ const AppContent: React.FC = () => {
     );
   }
 
-  // PERFORMANCE: More efficient profile completion check
-  const needsProfileCompletion = !user.fullName?.trim() || !user.address?.trim();
+  // CRITICAL FIX: More robust profile completion check
+  const hasValidFullName = user.fullName && user.fullName.trim().length > 0;
+  const hasValidAddress = user.address && user.address.trim().length > 0;
+  const needsProfileCompletion = !hasValidFullName || !hasValidAddress;
   
   // Check if user needs phone verification (only if they have a phone number)
-  const needsVerification = user.phone && !verification.phoneVerified;
+  const needsVerification = user.phone && user.phone.trim().length > 0 && !verification.phoneVerified;
+  
+  console.log('App.tsx Profile Check:', {
+    fullName: user.fullName,
+    hasValidFullName,
+    address: user.address,
+    hasValidAddress,
+    needsProfileCompletion,
+    phone: user.phone,
+    phoneVerified: verification.phoneVerified,
+    needsVerification
+  });
   
   // If user needs profile completion OR phone verification, show verification page
   if (needsProfileCompletion || needsVerification) {
+    console.log('Showing verification page for profile completion or phone verification');
     return <VerificationPage />;
   }
 
   // PERFORMANCE: Memoized dashboard component selection
   const getDashboardComponent = () => {
+    console.log('Rendering dashboard for user type:', user.userType);
     switch (user.userType) {
       case 'dumper':
         return <DumperDashboard />;
@@ -64,6 +79,7 @@ const AppContent: React.FC = () => {
   };
 
   // User is authenticated and profile is complete - show their dashboard
+  console.log('User is fully authenticated and verified, showing dashboard');
   return (
     <Router>
       <Routes>

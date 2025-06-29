@@ -63,10 +63,16 @@ export default defineConfig({
     // PERFORMANCE: Remove console logs in production
     drop: process.env.NODE_ENV === 'production' ? ['console', 'debugger'] : [],
   },
-  // PERFORMANCE: Enable compression
+  // PERFORMANCE: Enable compression and optimize dev server
   server: {
     hmr: {
       overlay: false, // Disable error overlay for better performance
     },
+    // CRITICAL FIX: Configure history API fallback for clean URLs
+    historyApiFallback: true,
+  },
+  // CRITICAL FIX: Configure preview server for clean URLs
+  preview: {
+    historyApiFallback: true,
   },
 });
