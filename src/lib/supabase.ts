@@ -9,13 +9,17 @@ console.log('Supabase Key exists:', !!supabaseAnonKey);
 
 if (!supabaseUrl || !supabaseAnonKey) {
   console.error('Missing Supabase environment variables!');
-  throw new Error('Missing Supabase environment variables. Please check your .env file.');
+  console.error('VITE_SUPABASE_URL:', supabaseUrl);
+  console.error('VITE_SUPABASE_ANON_KEY exists:', !!supabaseAnonKey);
+  
+  // Don't throw error immediately, allow app to load with fallback
+  console.warn('Supabase will not be available - using fallback mode');
 }
 
 // Validate that we're not using placeholder values
-if (supabaseUrl.includes('placeholder') || supabaseUrl.includes('your-project')) {
+if (supabaseUrl && (supabaseUrl.includes('placeholder') || supabaseUrl.includes('your-project'))) {
   console.error('Supabase URL contains placeholder values:', supabaseUrl);
-  throw new Error('Supabase URL is not configured properly. Please update your .env file with real Supabase credentials.');
+  console.warn('Supabase will not be available - using fallback mode');
 }
 
 // FIXED: Get the current origin dynamically instead of hardcoding domain
@@ -27,52 +31,108 @@ const getCurrentOrigin = () => {
   return 'http://localhost:5173';
 };
 
-export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    // FIXED: Use dynamic origin instead of hardcoded domain
-    redirectTo: getCurrentOrigin(),
-    autoRefreshToken: true,
-    persistSession: true,
-    detectSessionInUrl: true,
-    refreshTokenRetryCount: 2,
-    // Use localStorage for better performance
-    storage: {
-      getItem: (key: string) => {
-        if (typeof window !== 'undefined') {
-          return localStorage.getItem(key);
-        }
-        return null;
+// Create a fallback client if environment variables are missing
+let supabase: any;
+
+try {
+  if (supabaseUrl && supabaseAnonKey) {
+    supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
+      auth: {
+        // FIXED: Use dynamic origin instead of hardcoded domain
+        redirectTo: getCurrentOrigin(),
+        autoRefreshToken: true,
+        persistSession: true,
+        detectSessionInUrl: true,
+        refreshTokenRetryCount: 2,
+        // Use localStorage for better performance
+        storage: {
+          getItem: (key: string) => {
+            if (typeof window !== 'undefined') {
+              return localStorage.getItem(key);
+            }
+            return null;
+          },
+          setItem: (key: string, value: string) => {
+            if (typeof window !== 'undefined') {
+              localStorage.setItem(key, value);
+            }
+          },
+          removeItem: (key: string) => {
+            if (typeof window !== 'undefined') {
+              localStorage.removeItem(key);
+            }
+          },
+        },
       },
-      setItem: (key: string, value: string) => {
-        if (typeof window !== 'undefined') {
-          localStorage.setItem(key, value);
-        }
+      db: {
+        schema: 'public',
       },
-      removeItem: (key: string) => {
-        if (typeof window !== 'undefined') {
-          localStorage.removeItem(key);
-        }
+      global: {
+        headers: {
+          'x-my-custom-header': 'scrubbed-app',
+        },
       },
+      // OPTIMIZED: Better realtime configuration for performance
+      realtime: {
+        params: {
+          eventsPerSecond: 1,
+        },
+        heartbeatIntervalMs: 60000,
+        reconnectAfterMs: (tries: number) => Math.min(tries * 2000, 30000),
+        timeout: 20000,
+      },
+    });
+  } else {
+    // Create a mock client for development
+    console.warn('Creating mock Supabase client - database features will not work');
+    supabase = {
+      auth: {
+        getSession: () => Promise.resolve({ data: { session: null }, error: null }),
+        getUser: () => Promise.resolve({ data: { user: null }, error: null }),
+        signInWithOAuth: () => Promise.resolve({ data: null, error: new Error('Supabase not configured') }),
+        signOut: () => Promise.resolve({ error: null }),
+        onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
+        resend: () => Promise.resolve({ error: new Error('Supabase not configured') }),
+      },
+      from: () => ({
+        select: () => ({ eq: () => ({ single: () => Promise.resolve({ data: null, error: new Error('Supabase not configured') }) }) }),
+        insert: () => Promise.resolve({ data: null, error: new Error('Supabase not configured') }),
+        update: () => ({ eq: () => Promise.resolve({ data: null, error: new Error('Supabase not configured') }) }),
+        delete: () => ({ eq: () => Promise.resolve({ data: null, error: new Error('Supabase not configured') }) }),
+      }),
+      functions: {
+        invoke: () => Promise.resolve({ data: null, error: new Error('Supabase not configured') }),
+      },
+      storage: {
+        from: () => ({
+          upload: () => Promise.resolve({ data: null, error: new Error('Supabase not configured') }),
+          getPublicUrl: () => ({ data: { publicUrl: '' } }),
+        }),
+      },
+      channel: () => ({
+        on: () => ({ subscribe: () => {} }),
+      }),
+      removeChannel: () => {},
+    };
+  }
+} catch (error) {
+  console.error('Failed to create Supabase client:', error);
+  // Create minimal fallback
+  supabase = {
+    auth: {
+      getSession: () => Promise.resolve({ data: { session: null }, error: null }),
+      getUser: () => Promise.resolve({ data: { user: null }, error: null }),
+      signInWithOAuth: () => Promise.resolve({ data: null, error: new Error('Supabase initialization failed') }),
+      signOut: () => Promise.resolve({ error: null }),
+      onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
     },
-  },
-  db: {
-    schema: 'public',
-  },
-  global: {
-    headers: {
-      'x-my-custom-header': 'scrubbed-app',
-    },
-  },
-  // OPTIMIZED: Better realtime configuration for performance
-  realtime: {
-    params: {
-      eventsPerSecond: 1,
-    },
-    heartbeatIntervalMs: 60000,
-    reconnectAfterMs: (tries: number) => Math.min(tries * 2000, 30000),
-    timeout: 20000,
-  },
-});
+    from: () => ({
+      select: () => ({ eq: () => ({ single: () => Promise.resolve({ data: null, error: new Error('Supabase initialization failed') }) }) }),
+    }),
+  };
+}
+
+export { supabase };
 
 // PERFORMANCE: Cache for frequently accessed data
 const cache = new Map<string, { data: any; timestamp: number; ttl: number }>();
@@ -205,27 +265,29 @@ const extractUserTypeFromUrl = (): string | null => {
 };
 
 // Enhanced auth state change handler
-supabase.auth.onAuthStateChange((event, session) => {
-  if (event === 'SIGNED_IN' && session?.user) {
-    const userTypeFromUrl = extractUserTypeFromUrl();
-    
-    if (userTypeFromUrl) {
-      session.user.user_metadata = {
-        ...session.user.user_metadata,
-        user_type: userTypeFromUrl
-      };
-    }
-    
-    clearCache();
-  } else if (event === 'SIGNED_OUT') {
-    clearCache();
-    if (typeof window !== 'undefined') {
-      try {
-        localStorage.removeItem('supabase.auth.token');
-        localStorage.removeItem('pending_user_type');
-      } catch (e) {
-        console.warn('Failed to clear localStorage:', e);
+if (supabase && supabase.auth && supabase.auth.onAuthStateChange) {
+  supabase.auth.onAuthStateChange((event, session) => {
+    if (event === 'SIGNED_IN' && session?.user) {
+      const userTypeFromUrl = extractUserTypeFromUrl();
+      
+      if (userTypeFromUrl) {
+        session.user.user_metadata = {
+          ...session.user.user_metadata,
+          user_type: userTypeFromUrl
+        };
+      }
+      
+      clearCache();
+    } else if (event === 'SIGNED_OUT') {
+      clearCache();
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.removeItem('supabase.auth.token');
+          localStorage.removeItem('pending_user_type');
+        } catch (e) {
+          console.warn('Failed to clear localStorage:', e);
+        }
       }
     }
-  }
-});
+  });
+}

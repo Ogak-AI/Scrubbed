@@ -4,6 +4,14 @@ import react from '@vitejs/plugin-react';
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
+  resolve: {
+    dedupe: ['react', 'react-dom'],
+  },
+  optimizeDeps: {
+    include: ['react', 'react-dom', '@supabase/supabase-js', 'react-router-dom'],
+    exclude: ['lucide-react'],
+    force: true,
+  },
   build: {
     outDir: 'dist',
     sourcemap: false,
@@ -51,10 +59,6 @@ export default defineConfig({
     minify: 'esbuild',
     chunkSizeWarningLimit: 1000,
   },
-  optimizeDeps: {
-    include: ['react', 'react-dom', '@supabase/supabase-js', 'react-router-dom'],
-    exclude: ['lucide-react'],
-  },
   esbuild: {
     target: 'es2020',
     drop: process.env.NODE_ENV === 'production' ? ['console', 'debugger'] : [],
@@ -67,10 +71,8 @@ export default defineConfig({
     host: true,
     port: 5173,
     strictPort: false,
-    historyApiFallback: true,
   },
   preview: {
-    historyApiFallback: true,
     port: 4173,
     strictPort: false,
   },

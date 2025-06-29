@@ -85,13 +85,31 @@ const AppContent: React.FC = () => {
 };
 
 function App() {
-  return (
-    <AuthProvider>
-      <AppProvider>
-        <AppContent />
-      </AppProvider>
-    </AuthProvider>
-  );
+  try {
+    return (
+      <AuthProvider>
+        <AppProvider>
+          <AppContent />
+        </AppProvider>
+      </AuthProvider>
+    );
+  } catch (error) {
+    console.error('App component error:', error);
+    return (
+      <div className="min-h-screen bg-red-50 flex items-center justify-center">
+        <div className="text-center p-8">
+          <h1 className="text-2xl font-bold text-red-800 mb-4">Application Error</h1>
+          <p className="text-red-600 mb-4">The application failed to load properly.</p>
+          <button 
+            onClick={() => window.location.reload()} 
+            className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
+          >
+            Reload Page
+          </button>
+        </div>
+      </div>
+    );
+  }
 }
 
 export default App;
