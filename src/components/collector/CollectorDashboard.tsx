@@ -1,19 +1,28 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { MapPin, Clock, Trash2, User, Settings, LogOut, Bell, Star, Navigation, AlertCircle, RefreshCw, Menu, X, CheckCircle } from 'lucide-react';
+import { MapPin, Clock, Trash2, User, Settings, LogOut, Bell, Star, Navigation, AlertCircle, RefreshCw, Menu, X, CheckCircle, MessageSquare } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useCollectors } from '../../hooks/useCollectors';
 import { useWasteRequests } from '../../hooks/useWasteRequests';
+import { useChat } from '../../hooks/useChat';
 import { ProfileSettings } from '../common/ProfileSettings';
+import { ChatInterface } from '../chat/ChatInterface';
 import { parseCountryFromAddress } from '../../utils/currency';
 
 export const CollectorDashboard: React.FC = () => {
   const { user, signOut } = useAuth();
   const { myCollectorProfile, loading: collectorsLoading, createCollectorProfile, updateAvailability, updateLocation } = useCollectors();
   const { requests, loading: requestsLoading, acceptRequest, updateRequestStatus, error } = useWasteRequests();
+  const { getUnreadCount } = useChat();
   const [isAvailable, setIsAvailable] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showProfileSettings, setShowProfileSettings] = useState(false);
+  const [showChat, setShowChat] = useState(false);
+  const [selectedChatRequest, setSelectedChatRequest] = useState<{
+    requestId: string;
+    dumperId: string;
+    collectorId: string;
+  } | null>(null);
   const [currentLocation, setCurrentLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
   const [creatingProfile, setCreatingProfile] = useState(false);
@@ -107,6 +116,9 @@ export const CollectorDashboard: React.FC = () => {
     
     return true;
   }, [user]);
+
+  // Get unread message count
+  const unreadCount = getUnreadCount();
 
   useEffect(() => {
     if (myCollectorProfile) {
@@ -320,6 +332,20 @@ export const CollectorDashboard: React.FC = () => {
     setShowProfileSettings(false);
   };
 
+  const handleOpenChat = (requestId?: string, dumperId?: string, collectorId?: string) => {
+    if (requestId && dumperId && collectorId) {
+      setSelectedChatRequest({ requestId, dumperId, collectorId });
+    } else {
+      setSelectedChatRequest(null);
+    }
+    setShowChat(true);
+  };
+
+  const handleCloseChat = () => {
+    setShowChat(false);
+    setSelectedChatRequest(null);
+  };
+
   const refreshLocation = () => {
     setLocationAttempts(0); // Reset attempts for fresh start
     getCurrentLocation();
@@ -404,6 +430,17 @@ export const CollectorDashboard: React.FC = () => {
     return <ProfileSettings onClose={handleCloseProfileSettings} />;
   }
 
+  if (showChat) {
+    return (
+      <ChatInterface
+        onClose={handleCloseChat}
+        initialRequestId={selectedChatRequest?.requestId}
+        initialDumperId={selectedChatRequest?.dumperId}
+        initialCollectorId={selectedChatRequest?.collectorId}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -435,6 +472,20 @@ export const CollectorDashboard: React.FC = () => {
                       isAvailable ? 'translate-x-6' : 'translate-x-1'
                     }`}
                   />
+                </button>
+              </div>
+              
+              <div className="relative">
+                <button 
+                  onClick={() => handleOpenChat()}
+                  className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 relative"
+                >
+                  <MessageSquare className="h-5 w-5" />
+                  {unreadCount > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
+                      {unreadCount > 9 ? '9+' : unreadCount}
+                    </span>
+                  )}
                 </button>
               </div>
               
@@ -492,6 +543,19 @@ export const CollectorDashboard: React.FC = () => {
 
             {/* Mobile Header Actions */}
             <div className="lg:hidden flex items-center space-x-2">
+              <div className="relative">
+                <button 
+                  onClick={() => handleOpenChat()}
+                  className="p-2 text-gray-600 hover:text-gray-900 rounded-lg hover:bg-gray-100 relative"
+                >
+                  <MessageSquare className="h-5 w-5" />
+                  {unreadCount > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-4 w-4 flex items-center justify-center">
+                      {unreadCount > 9 ? '9+' : unreadCount}
+                    </span>
+                  )}
+                </button>
+              </div>
               <img 
                 src="/black_circle_360x360 (1).png" 
                 alt="Powered by Bolt" 
@@ -537,6 +601,21 @@ export const CollectorDashboard: React.FC = () => {
                 </div>
               </div>
               <div className="border-t border-gray-200 pt-3 space-y-2">
+                <button 
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    handleOpenChat();
+                  }}
+                  className="w-full flex items-center px-2 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <MessageSquare className="h-5 w-5 mr-3" />
+                  Messages
+                  {unreadCount > 0 && (
+                    <span className="ml-auto bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
+                      {unreadCount > 9 ? '9+' : unreadCount}
+                    </span>
+                  )}
+                </button>
                 <button className="w-full flex items-center px-2 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors">
                   <Bell className="h-5 w-5 mr-3" />
                   Notifications
@@ -901,24 +980,48 @@ export const CollectorDashboard: React.FC = () => {
                       
                       <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2">
                         {job.status === 'matched' && (
-                          <button
-                            onClick={() => handleUpdateStatus(job.id, 'in_progress')}
-                            className="flex-1 bg-blue-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-blue-700 transition-colors text-sm"
-                          >
-                            Start Collection
-                          </button>
+                          <>
+                            <button
+                              onClick={() => handleUpdateStatus(job.id, 'in_progress')}
+                              className="flex-1 bg-blue-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-blue-700 transition-colors text-sm"
+                            >
+                              Start Collection
+                            </button>
+                            <button
+                              onClick={() => handleOpenChat(job.id, job.dumperId, job.collectorId!)}
+                              className="flex-1 border border-gray-300 text-gray-700 py-2 px-4 rounded-lg font-medium hover:bg-gray-50 transition-colors text-sm flex items-center justify-center"
+                            >
+                              <MessageSquare className="h-4 w-4 mr-1" />
+                              Chat
+                            </button>
+                          </>
                         )}
                         {job.status === 'in_progress' && (
+                          <>
+                            <button
+                              onClick={() => handleUpdateStatus(job.id, 'completed')}
+                              className="flex-1 bg-green-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-green-700 transition-colors text-sm"
+                            >
+                              Mark Complete
+                            </button>
+                            <button
+                              onClick={() => handleOpenChat(job.id, job.dumperId, job.collectorId!)}
+                              className="flex-1 border border-gray-300 text-gray-700 py-2 px-4 rounded-lg font-medium hover:bg-gray-50 transition-colors text-sm flex items-center justify-center"
+                            >
+                              <MessageSquare className="h-4 w-4 mr-1" />
+                              Chat
+                            </button>
+                          </>
+                        )}
+                        {(job.status === 'completed') && (
                           <button
-                            onClick={() => handleUpdateStatus(job.id, 'completed')}
-                            className="flex-1 bg-green-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-green-700 transition-colors text-sm"
+                            onClick={() => handleOpenChat(job.id, job.dumperId, job.collectorId!)}
+                            className="w-full border border-gray-300 text-gray-700 py-2 px-4 rounded-lg font-medium hover:bg-gray-50 transition-colors text-sm flex items-center justify-center"
                           >
-                            Mark Complete
+                            <MessageSquare className="h-4 w-4 mr-1" />
+                            View Chat History
                           </button>
                         )}
-                        <button className="flex-1 border border-gray-300 text-gray-700 py-2 px-4 rounded-lg font-medium hover:bg-gray-50 transition-colors text-sm">
-                          Contact Customer
-                        </button>
                       </div>
                     </div>
                   ))}

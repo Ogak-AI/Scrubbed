@@ -3,6 +3,7 @@ import { ArrowLeft, MapPin, Clock, Package, User, Phone, Mail, Star, MessageSqua
 import { useWasteRequests } from '../../hooks/useWasteRequests';
 import { useAuth } from '../../hooks/useAuth';
 import { formatPrice, parseCountryFromAddress } from '../../utils/currency';
+import { ChatInterface } from '../chat/ChatInterface';
 import type { WasteRequest } from '../../types';
 
 interface RequestDetailsProps {
@@ -15,6 +16,7 @@ export const RequestDetails: React.FC<RequestDetailsProps> = ({ request, onClose
   const { updateRequestStatus } = useWasteRequests();
   const [cancelling, setCancelling] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [showChat, setShowChat] = React.useState(false);
 
   // Get user's country for currency formatting
   const userCountry = parseCountryFromAddress(user?.address);
@@ -106,9 +108,29 @@ export const RequestDetails: React.FC<RequestDetailsProps> = ({ request, onClose
     }
   };
 
+  const handleOpenChat = () => {
+    setShowChat(true);
+  };
+
+  const handleCloseChat = () => {
+    setShowChat(false);
+  };
+
   const dismissError = () => {
     setError(null);
   };
+
+  // Show chat interface if requested
+  if (showChat && request.collectorId) {
+    return (
+      <ChatInterface
+        onClose={handleCloseChat}
+        initialRequestId={request.id}
+        initialDumperId={request.dumperId}
+        initialCollectorId={request.collectorId}
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -348,15 +370,29 @@ export const RequestDetails: React.FC<RequestDetailsProps> = ({ request, onClose
                   </button>
                 )}
                 
-                {request.status === 'matched' && (
+                {request.status === 'matched' && request.collectorId && (
                   <>
-                    <button className="w-full bg-green-600 text-white py-2.5 px-4 rounded-lg font-medium hover:bg-green-700 transition-colors text-sm">
-                      Contact Collector
+                    <button 
+                      onClick={handleOpenChat}
+                      className="w-full bg-green-600 text-white py-2.5 px-4 rounded-lg font-medium hover:bg-green-700 transition-colors text-sm flex items-center justify-center"
+                    >
+                      <MessageSquare className="h-4 w-4 mr-2" />
+                      Chat with Collector
                     </button>
                     <button className="w-full border border-gray-300 text-gray-700 py-2.5 px-4 rounded-lg font-medium hover:bg-gray-50 transition-colors text-sm">
                       View Collector Profile
                     </button>
                   </>
+                )}
+
+                {(request.status === 'in_progress' || request.status === 'completed') && request.collectorId && (
+                  <button 
+                    onClick={handleOpenChat}
+                    className="w-full bg-green-600 text-white py-2.5 px-4 rounded-lg font-medium hover:bg-green-700 transition-colors text-sm flex items-center justify-center"
+                  >
+                    <MessageSquare className="h-4 w-4 mr-2" />
+                    Chat with Collector
+                  </button>
                 )}
                 
                 {request.status === 'completed' && (
@@ -394,7 +430,14 @@ export const RequestDetails: React.FC<RequestDetailsProps> = ({ request, onClose
                 </div>
                 
                 <div className="space-y-3">
-                  <button className="w-full flex items-center justify-center bg-green-600 text-white py-2.5 px-4 rounded-lg font-medium hover:bg-green-700 transition-colors text-sm">
+                  <button 
+                    onClick={handleOpenChat}
+                    className="w-full flex items-center justify-center bg-green-600 text-white py-2.5 px-4 rounded-lg font-medium hover:bg-green-700 transition-colors text-sm"
+                  >
+                    <MessageSquare className="h-4 w-4 mr-2" />
+                    Chat with Collector
+                  </button>
+                  <button className="w-full flex items-center justify-center border border-gray-300 text-gray-700 py-2.5 px-4 rounded-lg font-medium hover:bg-gray-50 transition-colors text-sm">
                     <Phone className="h-4 w-4 mr-2" />
                     Call Collector
                   </button>

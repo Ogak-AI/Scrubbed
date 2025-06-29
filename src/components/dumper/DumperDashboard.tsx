@@ -1,18 +1,22 @@
 import React, { useState, useMemo } from 'react';
-import { Plus, MapPin, Clock, Trash2, User, Settings, LogOut, Bell, Search, AlertCircle, RefreshCw, Menu, X } from 'lucide-react';
+import { Plus, MapPin, Clock, Trash2, User, Settings, LogOut, Bell, Search, AlertCircle, RefreshCw, Menu, X, MessageSquare } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useWasteRequests } from '../../hooks/useWasteRequests';
+import { useChat } from '../../hooks/useChat';
 import { RequestForm } from './RequestForm';
 import { RequestDetails } from './RequestDetails';
 import { ProfileSettings } from '../common/ProfileSettings';
+import { ChatInterface } from '../chat/ChatInterface';
 import type { WasteRequest } from '../../types';
 
 export const DumperDashboard: React.FC = () => {
   const { user, signOut } = useAuth();
   const { requests, loading, error, createRequest } = useWasteRequests();
+  const { getUnreadCount } = useChat();
   const [showRequestForm, setShowRequestForm] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState<WasteRequest | null>(null);
   const [showProfileSettings, setShowProfileSettings] = useState(false);
+  const [showChat, setShowChat] = useState(false);
   const [filter, setFilter] = useState<'all' | 'pending' | 'matched' | 'in_progress' | 'completed'>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [createError, setCreateError] = useState<string | null>(null);
@@ -38,6 +42,9 @@ export const DumperDashboard: React.FC = () => {
     const completedRequests = requests.filter(r => r.status === 'completed').length;
     return { activeRequests, completedRequests };
   }, [requests]);
+
+  // Get unread message count
+  const unreadCount = getUnreadCount();
 
   // PERFORMANCE: Memoize helper functions
   const getStatusColor = useMemo(() => (status: string) => {
@@ -109,9 +116,22 @@ export const DumperDashboard: React.FC = () => {
     setShowProfileSettings(false);
   };
 
+  const handleOpenChat = () => {
+    setShowChat(true);
+  };
+
+  const handleCloseChat = () => {
+    setShowChat(false);
+  };
+
   // Show profile settings if requested
   if (showProfileSettings) {
     return <ProfileSettings onClose={handleCloseProfileSettings} />;
+  }
+
+  // Show chat interface if requested
+  if (showChat) {
+    return <ChatInterface onClose={handleCloseChat} />;
   }
 
   // Show request details if a request is selected
@@ -156,6 +176,20 @@ export const DumperDashboard: React.FC = () => {
             
             {/* Desktop Header Actions */}
             <div className="hidden lg:flex items-center space-x-4">
+              <div className="relative">
+                <button 
+                  onClick={handleOpenChat}
+                  className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 relative"
+                >
+                  <MessageSquare className="h-5 w-5" />
+                  {unreadCount > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
+                      {unreadCount > 9 ? '9+' : unreadCount}
+                    </span>
+                  )}
+                </button>
+              </div>
+              
               <button className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100">
                 <Bell className="h-5 w-5" />
               </button>
@@ -210,6 +244,19 @@ export const DumperDashboard: React.FC = () => {
 
             {/* Mobile Header Actions */}
             <div className="lg:hidden flex items-center space-x-2">
+              <div className="relative">
+                <button 
+                  onClick={handleOpenChat}
+                  className="p-2 text-gray-600 hover:text-gray-900 rounded-lg hover:bg-gray-100 relative"
+                >
+                  <MessageSquare className="h-5 w-5" />
+                  {unreadCount > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-4 w-4 flex items-center justify-center">
+                      {unreadCount > 9 ? '9+' : unreadCount}
+                    </span>
+                  )}
+                </button>
+              </div>
               <img 
                 src="/black_circle_360x360 (1).png" 
                 alt="Powered by Bolt" 
@@ -238,6 +285,21 @@ export const DumperDashboard: React.FC = () => {
                 </div>
               </div>
               <div className="border-t border-gray-200 pt-3 space-y-2">
+                <button 
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    handleOpenChat();
+                  }}
+                  className="w-full flex items-center px-2 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <MessageSquare className="h-5 w-5 mr-3" />
+                  Messages
+                  {unreadCount > 0 && (
+                    <span className="ml-auto bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
+                      {unreadCount > 9 ? '9+' : unreadCount}
+                    </span>
+                  )}
+                </button>
                 <button className="w-full flex items-center px-2 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors">
                   <Bell className="h-5 w-5 mr-3" />
                   Notifications
@@ -426,13 +488,31 @@ export const DumperDashboard: React.FC = () => {
                         </div>
                       </div>
                       
-                      <div className="mt-4 sm:mt-0 sm:ml-4">
+                      <div className="mt-4 sm:mt-0 sm:ml-4 flex flex-col sm:items-end space-y-2">
                         <button 
                           onClick={() => handleViewDetails(request)}
                           className="text-green-600 hover:text-green-700 font-medium text-sm"
                         >
                           View Details
                         </button>
+                        
+                        {/* Show chat button for matched or in-progress requests */}
+                        {(request.status === 'matched' || request.status === 'in_progress') && request.collectorId && (
+                          <button 
+                            onClick={() => {
+                              setSelectedChatRequest({
+                                requestId: request.id,
+                                dumperId: request.dumperId,
+                                collectorId: request.collectorId!
+                              });
+                              setShowChat(true);
+                            }}
+                            className="text-blue-600 hover:text-blue-700 font-medium text-sm flex items-center"
+                          >
+                            <MessageSquare className="h-4 w-4 mr-1" />
+                            Chat with Collector
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>

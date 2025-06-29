@@ -47,6 +47,37 @@ export interface WasteRequest {
   updatedAt: string;
 }
 
+export interface ChatMessage {
+  id: string;
+  requestId: string;
+  senderId: string;
+  senderType: 'dumper' | 'collector';
+  message: string;
+  messageType: 'text' | 'image' | 'location';
+  metadata?: {
+    imageUrl?: string;
+    location?: { lat: number; lng: number };
+    fileName?: string;
+  };
+  isRead: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ChatConversation {
+  id: string;
+  requestId: string;
+  dumperId: string;
+  collectorId: string;
+  lastMessage: string | null;
+  lastMessageAt: string | null;
+  dumperUnreadCount: number;
+  collectorUnreadCount: number;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Location {
   lat: number;
   lng: number;

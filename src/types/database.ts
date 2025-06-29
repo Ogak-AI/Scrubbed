@@ -164,6 +164,88 @@ export interface Database {
           created_at?: string
         }
       }
+      chat_conversations: {
+        Row: {
+          id: string
+          request_id: string
+          dumper_id: string
+          collector_id: string
+          last_message: string | null
+          last_message_at: string | null
+          dumper_unread_count: number
+          collector_unread_count: number
+          is_active: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          request_id: string
+          dumper_id: string
+          collector_id: string
+          last_message?: string | null
+          last_message_at?: string | null
+          dumper_unread_count?: number
+          collector_unread_count?: number
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          request_id?: string
+          dumper_id?: string
+          collector_id?: string
+          last_message?: string | null
+          last_message_at?: string | null
+          dumper_unread_count?: number
+          collector_unread_count?: number
+          is_active?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      chat_messages: {
+        Row: {
+          id: string
+          conversation_id: string
+          request_id: string
+          sender_id: string
+          sender_type: 'dumper' | 'collector'
+          message: string
+          message_type: 'text' | 'image' | 'location'
+          metadata: Json | null
+          is_read: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          conversation_id: string
+          request_id: string
+          sender_id: string
+          sender_type: 'dumper' | 'collector'
+          message: string
+          message_type?: 'text' | 'image' | 'location'
+          metadata?: Json | null
+          is_read?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          conversation_id?: string
+          request_id?: string
+          sender_id?: string
+          sender_type?: 'dumper' | 'collector'
+          message?: string
+          message_type?: 'text' | 'image' | 'location'
+          metadata?: Json | null
+          is_read?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+      }
     }
     Views: {
       [_ in never]: never
