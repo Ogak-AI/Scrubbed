@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, MapPin, Calendar, Package, AlertCircle, CheckCircle, RefreshCw, Upload, X, Navigation, DollarSign } from 'lucide-react';
+import { ArrowLeft, MapPin, Calendar, Package, AlertCircle, CheckCircle, RefreshCw, Upload, X, DollarSign } from 'lucide-react';
 import { WASTE_TYPES } from '../../types';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../hooks/useAuth';
@@ -41,14 +41,10 @@ export const RequestForm: React.FC<RequestFormProps> = ({ onClose, onSubmit }) =
     photos: [],
   });
   const [loading, setLoading] = useState(false);
-  const [locationLoading, setLocationLoading] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [validationErrors, setValidationErrors] = useState<{[key: string]: string}>({});
   const [success, setSuccess] = useState(false);
-  const [currentLocation, setCurrentLocation] = useState<{ lat: number; lng: number } | null>(null);
-  const [locationAccuracy, setLocationAccuracy] = useState<number | null>(null);
-  const [locationAttempts, setLocationAttempts] = useState(0);
 
   // FEATURE 1: Auto-fill address from user profile
   useEffect(() => {
@@ -205,10 +201,13 @@ export const RequestForm: React.FC<RequestFormProps> = ({ onClose, onSubmit }) =
     setSuccess(false);
 
     try {
+      // Use a default location (this could be improved with geocoding the address)
+      const defaultLocation = { lat: 40.7128, lng: -74.0060 }; // Default to NYC coordinates
+      
       const requestData = {
         wasteType: formData.wasteType,
         description: formData.description || undefined,
-        location: currentLocation || { lat: 40.7128, lng: -74.0060 }, // Default to NYC if no location
+        location: defaultLocation,
         address: formData.address,
         scheduledTime: formData.scheduledTime || undefined,
         estimatedAmount: formData.estimatedAmount || undefined,
@@ -235,182 +234,6 @@ export const RequestForm: React.FC<RequestFormProps> = ({ onClose, onSubmit }) =
     }
   };
 
-  const reverseGeocode = async (lat: number, lng: number): Promise<string> => {
-    try {
-      // Using a free geocoding service (OpenStreetMap Nominatim)
-      const response = await fetch(
-        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`,
-        {
-          headers: {
-            'User-Agent': 'Scrubbed-App/1.0'
-          }
-        }
-      );
-      
-      if (!response.ok) {
-        throw new Error('Geocoding service unavailable');
-      }
-      
-      const data = await response.json();
-      
-      if (data && data.display_name) {
-        // Format the address nicely
-        const address = data.address;
-        let formattedAddress = '';
-        
-        if (address) {
-          const parts = [];
-          if (address.house_number) parts.push(address.house_number);
-          if (address.road) parts.push(address.road);
-          if (address.neighbourhood || address.suburb) parts.push(address.neighbourhood || address.suburb);
-          if (address.city || address.town || address.village) parts.push(address.city || address.town || address.village);
-          if (address.state) parts.push(address.state);
-          if (address.postcode) parts.push(address.postcode);
-          
-          formattedAddress = parts.join(', ');
-        }
-        
-        return formattedAddress || data.display_name;
-      }
-      
-      throw new Error('Address not found');
-    } catch (error) {
-      console.error('Reverse geocoding error:', error);
-      // Fallback to coordinates if geocoding fails
-      return `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
-    }
-  };
-
-  const getCurrentLocation = async () => {
-    setError(null);
-    setLocationLoading(true);
-    setLocationAttempts(prev => prev + 1);
-    
-    if (!navigator.geolocation) {
-      setError('Geolocation is not supported by this browser.');
-      setLocationLoading(false);
-      return;
-    }
-
-    try {
-      // ENHANCED: Multiple attempts with progressively more aggressive settings
-      const attempts = [
-        // Attempt 1: High accuracy with reasonable timeout
-        {
-          enableHighAccuracy: true,
-          timeout: 15000,
-          maximumAge: 60000, // 1 minute cache
-        },
-        // Attempt 2: High accuracy with longer timeout
-        {
-          enableHighAccuracy: true,
-          timeout: 30000,
-          maximumAge: 30000, // 30 seconds cache
-        },
-        // Attempt 3: Maximum precision, no cache
-        {
-          enableHighAccuracy: true,
-          timeout: 45000,
-          maximumAge: 0, // No cache - force fresh location
-        }
-      ];
-
-      const currentAttempt = Math.min(locationAttempts, attempts.length) - 1;
-      const options = attempts[currentAttempt] || attempts[attempts.length - 1];
-
-      console.log(`Location attempt ${locationAttempts} with options:`, options);
-
-      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-        navigator.geolocation.getCurrentPosition(
-          resolve,
-          reject,
-          options
-        );
-      });
-
-      const { latitude, longitude, accuracy } = position.coords;
-      
-      console.log('Location obtained:', {
-        lat: latitude,
-        lng: longitude,
-        accuracy: accuracy,
-        timestamp: position.timestamp
-      });
-      
-      setCurrentLocation({
-        lat: latitude,
-        lng: longitude,
-      });
-      
-      setLocationAccuracy(accuracy);
-
-      // Get human-readable address
-      try {
-        const address = await reverseGeocode(latitude, longitude);
-        
-        setFormData(prev => ({
-          ...prev,
-          address: address,
-        }));
-
-        // Clear any address validation errors
-        setValidationErrors(prev => {
-          const newErrors = { ...prev };
-          delete newErrors.address;
-          return newErrors;
-        });
-      } catch (geocodeError) {
-        console.error('Geocoding failed:', geocodeError);
-        // Still set the location even if geocoding fails
-        setFormData(prev => ({
-          ...prev,
-          address: `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`,
-        }));
-      }
-
-    } catch (error: unknown) {
-      console.error('Error getting location:', error);
-      
-      let errorMessage = 'Unable to get your precise location. ';
-      
-      if (error && typeof error === 'object' && 'code' in error) {
-        const geolocationError = error as GeolocationPositionError;
-        switch (geolocationError.code) {
-          case geolocationError.PERMISSION_DENIED:
-            errorMessage += 'Please allow location access in your browser settings and try again.';
-            break;
-          case geolocationError.POSITION_UNAVAILABLE:
-            errorMessage += 'Location information is unavailable. Please check your device settings and ensure you have a good GPS signal.';
-            break;
-          case geolocationError.TIMEOUT:
-            errorMessage += `Location request timed out. ${locationAttempts < 3 ? 'Trying again with different settings...' : 'Please try again or enter your address manually.'}`;
-            break;
-          default:
-            errorMessage += 'Please enter your address manually.';
-            break;
-        }
-      } else {
-        errorMessage += 'Please enter your address manually.';
-      }
-      
-      // If this was a timeout and we haven't tried all attempts, try again automatically
-      if (error && typeof error === 'object' && 'code' in error) {
-        const geolocationError = error as GeolocationPositionError;
-        if (geolocationError.code === geolocationError.TIMEOUT && locationAttempts < 3) {
-          console.log('Retrying location with more aggressive settings...');
-          setTimeout(() => {
-            getCurrentLocation();
-          }, 1000);
-          return;
-        }
-      }
-      
-      setError(errorMessage);
-    } finally {
-      setLocationLoading(false);
-    }
-  };
-
   const handleInputChange = (field: keyof RequestFormData, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
     
@@ -422,40 +245,6 @@ export const RequestForm: React.FC<RequestFormProps> = ({ onClose, onSubmit }) =
         return newErrors;
       });
     }
-  };
-
-  const getLocationStatusMessage = () => {
-    if (locationLoading) {
-      return `Getting precise location... (Attempt ${locationAttempts}/3)`;
-    }
-    if (currentLocation && locationAccuracy !== null) {
-      if (locationAccuracy <= 10) {
-        return `✓ High precision location (±${Math.round(locationAccuracy)}m accuracy)`;
-      } else if (locationAccuracy <= 50) {
-        return `✓ Good location accuracy (±${Math.round(locationAccuracy)}m accuracy)`;
-      } else {
-        return `⚠ Location found but accuracy is low (±${Math.round(locationAccuracy)}m). Consider trying again.`;
-      }
-    }
-    if (currentLocation) {
-      return '✓ Location detected and address updated';
-    }
-    return null;
-  };
-
-  const getLocationButtonText = () => {
-    if (locationLoading) {
-      return `Getting location... (${locationAttempts}/3)`;
-    }
-    if (currentLocation && locationAccuracy !== null && locationAccuracy > 50) {
-      return 'Try for better accuracy';
-    }
-    return 'Use current location';
-  };
-
-  const refreshLocation = () => {
-    setLocationAttempts(0); // Reset attempts for fresh start
-    getCurrentLocation();
   };
 
   if (success) {
@@ -568,88 +357,32 @@ export const RequestForm: React.FC<RequestFormProps> = ({ onClose, onSubmit }) =
               />
             </div>
 
-            {/* Location */}
+            {/* Address */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Pickup Location *
+                Pickup Address *
               </label>
-              <div className="space-y-3">
-                <div className="relative">
-                  <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
-                  <input
-                    type="text"
-                    value={formData.address}
-                    onChange={(e) => handleInputChange('address', e.target.value)}
-                    className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm sm:text-base ${
-                      validationErrors.address ? 'border-red-300 bg-red-50' : 'border-gray-300'
-                    }`}
-                    placeholder="Enter pickup address"
-                  />
-                </div>
-                {validationErrors.address && (
-                  <p className="text-sm text-red-600 flex items-center">
-                    <AlertCircle className="h-4 w-4 mr-1" />
-                    {validationErrors.address}
-                  </p>
-                )}
-                
-                {/* Enhanced Location Button */}
-                <div className="flex items-center justify-between">
-                  <button
-                    type="button"
-                    onClick={getCurrentLocation}
-                    disabled={locationLoading}
-                    className="flex items-center text-green-600 hover:text-green-700 font-medium text-sm disabled:opacity-50 disabled:cursor-not-allowed bg-green-50 hover:bg-green-100 px-3 py-2 rounded-lg transition-colors"
-                  >
-                    {locationLoading ? (
-                      <>
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-green-600 mr-2"></div>
-                        {getLocationButtonText()}
-                      </>
-                    ) : (
-                      <>
-                        <Navigation className="h-4 w-4 mr-1" />
-                        {getLocationButtonText()}
-                      </>
-                    )}
-                  </button>
-                  
-                  {/* Reset location attempts */}
-                  {locationAttempts > 0 && !locationLoading && (
-                    <button
-                      type="button"
-                      onClick={() => setLocationAttempts(0)}
-                      className="text-xs text-gray-500 hover:text-gray-700"
-                    >
-                      Reset attempts
-                    </button>
-                  )}
-                </div>
-                
-                {/* Location Status */}
-                {getLocationStatusMessage() && (
-                  <div className={`text-xs p-2 rounded-lg ${
-                    currentLocation && locationAccuracy !== null && locationAccuracy <= 50
-                      ? 'text-green-600 bg-green-50 border border-green-200'
-                      : currentLocation && locationAccuracy !== null && locationAccuracy > 50
-                      ? 'text-yellow-600 bg-yellow-50 border border-yellow-200'
-                      : 'text-blue-600 bg-blue-50 border border-blue-200'
-                  }`}>
-                    {getLocationStatusMessage()}
-                  </div>
-                )}
-                
-                {/* Location Tips */}
-                <div className="text-xs text-gray-500 bg-gray-50 p-3 rounded-lg">
-                  <p className="font-medium mb-1">💡 For best location accuracy:</p>
-                  <ul className="space-y-1">
-                    <li>• Enable location services in your browser</li>
-                    <li>• Go outside or near a window for better GPS signal</li>
-                    <li>• Wait a moment for GPS to stabilize</li>
-                    <li>• On mobile, ensure location services are enabled for your browser</li>
-                  </ul>
-                </div>
+              <div className="relative">
+                <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                <input
+                  type="text"
+                  value={formData.address}
+                  onChange={(e) => handleInputChange('address', e.target.value)}
+                  className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm sm:text-base ${
+                    validationErrors.address ? 'border-red-300 bg-red-50' : 'border-gray-300'
+                  }`}
+                  placeholder="Enter pickup address"
+                />
               </div>
+              {validationErrors.address && (
+                <p className="mt-1 text-sm text-red-600 flex items-center">
+                  <AlertCircle className="h-4 w-4 mr-1" />
+                  {validationErrors.address}
+                </p>
+              )}
+              <p className="mt-1 text-xs text-gray-500">
+                Please provide the complete address where waste should be collected
+              </p>
             </div>
 
             {/* Estimated Amount */}
