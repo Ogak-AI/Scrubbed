@@ -73,8 +73,9 @@ describe('Performance and Load Tests', () => {
       
       // Simulate adding event listeners
       const addListener = (event: string, handler: () => void) => {
-        listeners.add({ event, handler });
-        return () => listeners.delete({ event, handler });
+        const listenerObj = { event, handler };
+        listeners.add(listenerObj);
+        return () => listeners.delete(listenerObj);
       };
       
       // Add listeners
