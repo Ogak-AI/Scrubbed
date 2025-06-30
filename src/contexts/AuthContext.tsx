@@ -297,6 +297,74 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   }, [determineUserType, getDisplayName]);
 
+  // CRITICAL FIX: Force fresh profile fetch without cache
+  const fetchUserProfileFresh = useCallback(async (userId: string, supabaseUser?: SupabaseUser) => {
+    console.log('AuthContext: Fetching fresh profile for user:', userId);
+    
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single();
+
+      if (error && error.code !== 'PGRST116') {
+        console.error('Error fetching fresh user profile:', error);
+        throw error;
+      }
+
+      if (data) {
+        const userData = {
+          id: data.id,
+          email: data.email,
+          fullName: data.full_name,
+          userType: data.user_type,
+          phone: data.phone,
+          address: data.address,
+          emailVerified: data.email_verified || true,
+          phoneVerified: data.phone_verified || false,
+          createdAt: data.created_at,
+          updatedAt: data.updated_at,
+        };
+        
+        console.log('AuthContext: Fresh profile fetched from database:', userData);
+        
+        // Update cache with fresh data
+        const cacheKey = `user_profile_${userId}`;
+        setCachedData(cacheKey, userData, 300000);
+        
+        setUser(userData);
+        
+        setVerification(prev => ({
+          ...prev,
+          emailVerified: userData.emailVerified,
+          phoneVerified: userData.phoneVerified,
+        }));
+        
+        return userData;
+      } else {
+        // No profile found, create basic user
+        const basicUser = createBasicUser(userId, supabaseUser);
+        console.log('AuthContext: No profile found, using basic user:', basicUser);
+        setUser(basicUser);
+        
+        try {
+          await ensureProfileExists(supabaseUser);
+        } catch (profileError) {
+          console.error('Failed to create profile:', profileError);
+        }
+        
+        return basicUser;
+      }
+    } catch (error: unknown) {
+      console.error('Error in fetchUserProfileFresh:', error);
+      const fallbackUser = createBasicUser(userId, supabaseUser);
+      console.log('AuthContext: Using fallback user:', fallbackUser);
+      setUser(fallbackUser);
+      return fallbackUser;
+    }
+  }, [createBasicUser, ensureProfileExists]);
+
   // PERFORMANCE: Optimized profile fetching with caching and timeout
   const fetchUserProfile = useCallback(async (userId: string, supabaseUser?: SupabaseUser) => {
     const cacheKey = `user_profile_${userId}`;
@@ -664,7 +732,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   }, [clearUserTypeStorage]);
 
-  // CRITICAL FIX: Enhanced profile update function with immediate state update
+  // CRITICAL FIX: Enhanced profile update function with immediate state update and cache clearing
   const updateProfile = useCallback(async (updates: Partial<User>) => {
     if (!user) {
       throw new Error('User not authenticated');
@@ -673,76 +741,53 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     try {
       console.log('AuthContext: Starting profile update with:', updates);
       
-      // Clear cache for this user immediately
+      // CRITICAL: Clear ALL caches immediately before update
       clearCache(`user_profile_${user.id}`);
       clearCache(`profile_exists_${user.id}`);
+      clearCache(); // Clear all caches to be safe
       
-      const { data: existingProfile, error: checkError } = await supabase
+      // Update the profile in the database
+      const { data: updatedProfile, error: updateError } = await supabase
         .from('profiles')
-        .select('*')
+        .update({
+          full_name: updates.fullName,
+          user_type: updates.userType,
+          phone: updates.phone,
+          address: updates.address,
+          updated_at: new Date().toISOString(),
+        })
         .eq('id', user.id)
+        .select()
         .single();
 
-      if (checkError && checkError.code === 'PGRST116') {
-        // Create new profile
-        const profileData = {
-          id: user.id,
-          email: user.email,
-          full_name: updates.fullName || user.fullName,
-          user_type: updates.userType || user.userType,
-          phone: updates.phone || user.phone,
-          address: updates.address || user.address,
-          email_verified: user.emailVerified,
-          phone_verified: user.phoneVerified,
-        };
-
-        const { data: newProfile, error: createError } = await supabase
-          .from('profiles')
-          .insert(profileData)
-          .select()
-          .single();
-
-        if (createError) {
-          throw new Error(`Failed to create profile: ${createError.message}`);
-        }
-        
-        console.log('AuthContext: Created new profile:', newProfile);
-      } else if (checkError) {
-        throw new Error(`Profile check failed: ${checkError.message}`);
-      } else {
-        // Update existing profile
-        const { data: updatedProfile, error: updateError } = await supabase
-          .from('profiles')
-          .update({
-            full_name: updates.fullName,
-            user_type: updates.userType,
-            phone: updates.phone,
-            address: updates.address,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', user.id)
-          .select()
-          .single();
-
-        if (updateError) {
-          throw new Error(`Failed to update profile: ${updateError.message}`);
-        }
-        
-        console.log('AuthContext: Updated existing profile:', updatedProfile);
+      if (updateError) {
+        throw new Error(`Failed to update profile: ${updateError.message}`);
       }
+      
+      console.log('AuthContext: Database update successful:', updatedProfile);
 
-      // CRITICAL FIX: Update local user state immediately and force re-render
+      // CRITICAL FIX: Update local user state immediately with the database response
       const updatedUser = { 
         ...user, 
         ...updates, 
-        updatedAt: new Date().toISOString() 
+        updatedAt: updatedProfile.updated_at || new Date().toISOString()
       };
       
       console.log('AuthContext: Setting updated user state:', updatedUser);
       setUser(updatedUser);
 
-      // Cache the updated user data with a shorter TTL to ensure freshness
-      setCachedData(`user_profile_${user.id}`, updatedUser, 60000); // 1 minute cache
+      // CRITICAL: Don't cache immediately - let the next fetch get fresh data
+      // This ensures we always get the latest data from the database
+      
+      // Force a fresh profile fetch to verify the update
+      setTimeout(async () => {
+        try {
+          console.log('AuthContext: Fetching fresh profile to verify update');
+          await fetchUserProfileFresh(user.id);
+        } catch (error) {
+          console.error('Error fetching fresh profile after update:', error);
+        }
+      }, 500);
 
       console.log('AuthContext: Profile update completed successfully');
 
@@ -750,7 +795,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       console.error('AuthContext: Error updating profile:', error);
       throw error;
     }
-  }, [user]);
+  }, [user, fetchUserProfileFresh]);
 
   // PERFORMANCE: Optimized verification functions
   const resendEmailVerification = useCallback(async () => {

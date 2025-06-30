@@ -454,7 +454,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
                     <div className="flex items-center justify-between">
                       <div className="flex items-center">
                         <CheckCircle className="h-5 w-5 text-green-500 mr-2" />
-                        <p className="text-green-700 text-sm font-medium">Profile updated successfully! Changes have been applied.</p>
+                        <p className="text-green-700 text-sm font-medium">Profile updated successfully! Changes have been applied and will persist after sign out.</p>
                       </div>
                     </div>
                   </div>
