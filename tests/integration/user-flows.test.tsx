@@ -118,9 +118,9 @@ describe('User Flow Integration Tests', () => {
         expect(screen.getByText('New Collection Request')).toBeInTheDocument();
       });
 
-      // Fill out form
+      // Fill out form - use fireEvent.change instead of user.selectOptions for better stability
       const wasteTypeSelect = screen.getByDisplayValue('Select waste type');
-      await user.selectOptions(wasteTypeSelect, 'Household');
+      fireEvent.change(wasteTypeSelect, { target: { value: 'Household' } });
 
       const addressInput = screen.getByPlaceholderText('Enter pickup address');
       await user.clear(addressInput);
