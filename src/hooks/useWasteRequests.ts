@@ -79,17 +79,19 @@ export const useWasteRequests = () => {
     }
   }, [user]);
 
-  // CRITICAL FIX: Prevent infinite loops with better state management
-  const fetchRequests = useCallback(async () => {
-    if (!user || !cacheKey || loading) {
+  // CRITICAL FIX: Enhanced fetch requests with better caching and persistence
+  const fetchRequests = useCallback(async (forceRefresh = false) => {
+    if (!user || !cacheKey) {
       return;
     }
 
-    // Check cache first
-    const cached = getCachedData<WasteRequest[]>(cacheKey);
-    if (cached && initialized) {
-      setRequests(cached);
-      return;
+    // Check cache first unless force refresh is requested
+    if (!forceRefresh) {
+      const cached = getCachedData<WasteRequest[]>(cacheKey);
+      if (cached && initialized) {
+        setRequests(cached);
+        return;
+      }
     }
 
     try {
@@ -127,7 +129,7 @@ export const useWasteRequests = () => {
             updated_at
           `)
           .order('created_at', { ascending: false })
-          .limit(20); // Reduced limit for better performance
+          .limit(50); // Increased limit to show more history
 
         // More efficient filtering
         if (user.userType === 'dumper') {
@@ -140,14 +142,14 @@ export const useWasteRequests = () => {
               .select('*')
               .eq('collector_id', user.id)
               .order('created_at', { ascending: false })
-              .limit(10),
+              .limit(25),
             supabase
               .from('waste_requests')
               .select('*')
               .eq('status', 'pending')
               .is('collector_id', null)
               .order('created_at', { ascending: false })
-              .limit(10)
+              .limit(25)
           ]);
 
           if (myJobsQuery.error) throw myJobsQuery.error;
@@ -193,8 +195,8 @@ export const useWasteRequests = () => {
 
       setRequests(formattedRequests);
       
-      // Cache the results for 2 minutes
-      setCachedData(cacheKey, formattedRequests, 120000);
+      // ENHANCED: Cache the results for longer to improve persistence
+      setCachedData(cacheKey, formattedRequests, 300000); // 5 minutes cache
       setInitialized(true);
       
     } catch (err: unknown) {
@@ -205,9 +207,9 @@ export const useWasteRequests = () => {
     } finally {
       setLoading(false);
     }
-  }, [user, cacheKey, ensureUserProfileExists, loading, initialized]);
+  }, [user, cacheKey, ensureUserProfileExists, initialized]);
 
-  // PERFORMANCE: Optimized create request function
+  // ENHANCED: Create request function with better persistence
   const createRequest = useCallback(async (requestData: CreateRequestData) => {
     if (!user) {
       throw new Error('User not authenticated');
@@ -277,10 +279,13 @@ export const useWasteRequests = () => {
         updatedAt: data.updated_at,
       };
 
-      // Update local state and cache
+      // ENHANCED: Update local state and force cache refresh
       setRequests(prev => [newRequest, ...prev]);
       if (cacheKey) {
-        clearCache(cacheKey); // Clear cache to force refresh
+        clearCache(cacheKey); // Clear cache to force refresh on next load
+        // Also update cache with new data
+        const updatedRequests = [newRequest, ...requests];
+        setCachedData(cacheKey, updatedRequests, 300000);
       }
       
       return newRequest;
@@ -288,9 +293,9 @@ export const useWasteRequests = () => {
       console.error('Error creating request:', err);
       throw err;
     }
-  }, [user, ensureUserProfileExists, cacheKey]);
+  }, [user, ensureUserProfileExists, cacheKey, requests]);
 
-  // PERFORMANCE: Optimized accept request function
+  // ENHANCED: Accept request function with better state management
   const acceptRequest = useCallback(async (requestId: string) => {
     if (!user || user.userType !== 'collector') {
       throw new Error('Only collectors can accept requests');
@@ -318,10 +323,10 @@ export const useWasteRequests = () => {
         throw error;
       }
 
-      // Update local state
+      // ENHANCED: Update local state immediately
       setRequests(prev => prev.map(request => 
         request.id === requestId 
-          ? { ...request, collectorId: user.id, status: 'matched' as const }
+          ? { ...request, collectorId: user.id, status: 'matched' as const, updatedAt: new Date().toISOString() }
           : request
       ));
 
@@ -337,7 +342,7 @@ export const useWasteRequests = () => {
     }
   }, [user, ensureUserProfileExists, cacheKey]);
 
-  // PERFORMANCE: Optimized status update function
+  // ENHANCED: Status update function with better persistence
   const updateRequestStatus = useCallback(async (requestId: string, status: WasteRequest['status']) => {
     if (!user) throw new Error('User not authenticated');
 
@@ -354,16 +359,21 @@ export const useWasteRequests = () => {
 
       if (error) throw error;
 
-      // Update local state
+      // ENHANCED: Update local state immediately
       setRequests(prev => prev.map(request => 
         request.id === requestId 
-          ? { ...request, status }
+          ? { ...request, status, updatedAt: new Date().toISOString() }
           : request
       ));
 
-      // Clear cache to force refresh
+      // Update cache with new data
       if (cacheKey) {
-        clearCache(cacheKey);
+        const updatedRequests = requests.map(request => 
+          request.id === requestId 
+            ? { ...request, status, updatedAt: new Date().toISOString() }
+            : request
+        );
+        setCachedData(cacheKey, updatedRequests, 300000);
       }
 
       return data;
@@ -371,9 +381,9 @@ export const useWasteRequests = () => {
       console.error('Error updating request status:', err);
       throw err;
     }
-  }, [user, cacheKey]);
+  }, [user, cacheKey, requests]);
 
-  // CRITICAL FIX: Only fetch once on mount and when user changes
+  // CRITICAL FIX: Only fetch once on mount and when user changes, with better persistence
   useEffect(() => {
     let mounted = true;
     
@@ -394,61 +404,10 @@ export const useWasteRequests = () => {
     };
   }, [user?.id, user?.userType]); // Only depend on user ID and type
 
-  // CRITICAL FIX: Disable real-time subscriptions temporarily to prevent resource exhaustion
-  // This can be re-enabled once the core issues are resolved
-  /*
-  useEffect(() => {
-    if (!user || !initialized) return;
-
-    let channel: ReturnType<typeof createOptimizedRealtimeSubscription> = null;
-    
-    const setupSubscription = () => {
-      const debouncedRefetch = () => {
-        if (document.visibilityState === 'visible') {
-          // Clear cache before refetch to ensure fresh data
-          if (cacheKey) {
-            clearCache(cacheKey);
-          }
-          fetchRequests();
-        }
-      };
-      
-      channel = createOptimizedRealtimeSubscription(
-        'waste_requests',
-        (payload) => {
-          if (payload && typeof payload === 'object' && 'new' in payload) {
-            const newData = payload.new as { dumper_id?: string; collector_id?: string; status?: string };
-            if (newData && (
-              newData.dumper_id === user.id || 
-              newData.collector_id === user.id ||
-              (user.userType === 'collector' && newData.status === 'pending')
-            )) {
-              debouncedRefetch();
-            }
-          }
-        },
-        {
-          filter: user.userType === 'dumper' ? `dumper_id=eq.${user.id}` : undefined,
-          debounceMs: 5000 // Increased debounce for better performance
-        }
-      );
-
-      return channel;
-    };
-
-    const subscription = setupSubscription();
-
-    return () => {
-      if (subscription) {
-        if (typeof subscription === 'object' && subscription !== null && 'unsubscribe' in subscription) {
-          (subscription as { unsubscribe: () => void }).unsubscribe();
-        } else {
-          supabase.removeChannel(subscription);
-        }
-      }
-    };
-  }, [user?.id, user?.userType, cacheKey, fetchRequests, initialized]);
-  */
+  // ENHANCED: Refresh function for manual refresh
+  const refetch = useCallback(() => {
+    return fetchRequests(true); // Force refresh
+  }, [fetchRequests]);
 
   return {
     requests,
@@ -457,6 +416,6 @@ export const useWasteRequests = () => {
     createRequest,
     acceptRequest,
     updateRequestStatus,
-    refetch: fetchRequests,
+    refetch,
   };
 };

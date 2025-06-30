@@ -19,7 +19,7 @@ export const AuthPage: React.FC = () => {
     return null;
   }
 
-  // If user is already signed in but with different account type, show switch option
+  // ENHANCED: If user is already signed in but with different account type, show switch option
   const isSignedInWithDifferentType = user && user.userType !== userType;
 
   const handleSwitchUserType = async () => {
@@ -131,7 +131,7 @@ export const AuthPage: React.FC = () => {
               </p>
             </div>
 
-            {/* Account Type Switch Notice */}
+            {/* ENHANCED: Account Type Switch Notice */}
             {isSignedInWithDifferentType && (
               <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
                 <div className="text-center">
@@ -139,22 +139,33 @@ export const AuthPage: React.FC = () => {
                     You're currently signed in as a {user.userType === 'dumper' ? 'Customer' : 'Collector'}
                   </p>
                   <p className="text-yellow-700 text-sm mb-3">
-                    Would you like to switch to a {userType === 'dumper' ? 'Customer' : 'Collector'} account?
+                    Would you like to switch to a {userType === 'dumper' ? 'Customer' : 'Collector'} account? You can switch back anytime in your profile settings.
                   </p>
-                  <button
-                    onClick={handleSwitchUserType}
-                    disabled={switchingType}
-                    className="w-full bg-yellow-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-yellow-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm flex items-center justify-center"
-                  >
-                    {switchingType ? (
-                      <>
-                        <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                        Switching...
-                      </>
-                    ) : (
-                      `Switch to ${userType === 'dumper' ? 'Customer' : 'Collector'}`
-                    )}
-                  </button>
+                  <div className="space-y-2">
+                    <button
+                      onClick={handleSwitchUserType}
+                      disabled={switchingType}
+                      className="w-full bg-yellow-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-yellow-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm flex items-center justify-center"
+                    >
+                      {switchingType ? (
+                        <>
+                          <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                          Switching...
+                        </>
+                      ) : (
+                        <>
+                          <RefreshCw className="h-4 w-4 mr-2" />
+                          Switch to {userType === 'dumper' ? 'Customer' : 'Collector'}
+                        </>
+                      )}
+                    </button>
+                    <button
+                      onClick={() => navigate('/')}
+                      className="w-full text-yellow-700 hover:text-yellow-800 font-medium text-sm transition-colors"
+                    >
+                      Go to Dashboard Instead
+                    </button>
+                  </div>
                   <p className="text-yellow-600 text-xs mt-2">
                     Or sign out and sign in with a different Google account
                   </p>

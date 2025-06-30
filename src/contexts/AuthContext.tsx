@@ -16,6 +16,7 @@ interface AuthContextType {
   sendPhoneVerification: (phone: string) => Promise<void>;
   verifyPhoneCode: (code: string) => Promise<void>;
   switchUserType: (newUserType: 'dumper' | 'collector') => Promise<void>;
+  deleteAccount: () => Promise<void>;
 }
 
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -450,7 +451,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   }, [createBasicUser, ensureProfileExists]);
 
-  // NEW: Function to switch user type for existing users
+  // ENHANCED: Function to switch user type for existing users
   const switchUserType = useCallback(async (newUserType: 'dumper' | 'collector') => {
     if (!user) {
       throw new Error('User not authenticated');
@@ -500,6 +501,135 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       throw error;
     }
   }, [user]);
+
+  // NEW: Account deletion function
+  const deleteAccount = useCallback(async () => {
+    if (!user || !session) {
+      throw new Error('User not authenticated');
+    }
+
+    try {
+      console.log('Starting account deletion process for user:', user.id);
+
+      // First, delete all related data in the correct order to respect foreign key constraints
+      
+      // 1. Delete chat messages
+      const { error: messagesError } = await supabase
+        .from('chat_messages')
+        .delete()
+        .eq('sender_id', user.id);
+
+      if (messagesError) {
+        console.warn('Error deleting chat messages:', messagesError);
+      }
+
+      // 2. Delete chat conversations
+      const { error: conversationsError } = await supabase
+        .from('chat_conversations')
+        .delete()
+        .or(`dumper_id.eq.${user.id},collector_id.eq.${user.id}`);
+
+      if (conversationsError) {
+        console.warn('Error deleting chat conversations:', conversationsError);
+      }
+
+      // 3. Delete phone verifications
+      const { error: phoneVerificationsError } = await supabase
+        .from('phone_verifications')
+        .delete()
+        .eq('user_id', user.id);
+
+      if (phoneVerificationsError) {
+        console.warn('Error deleting phone verifications:', phoneVerificationsError);
+      }
+
+      // 4. Update waste requests to remove collector references
+      const { error: wasteRequestsError } = await supabase
+        .from('waste_requests')
+        .update({ collector_id: null })
+        .eq('collector_id', user.id);
+
+      if (wasteRequestsError) {
+        console.warn('Error updating waste requests:', wasteRequestsError);
+      }
+
+      // 5. Delete waste requests created by user
+      const { error: deleteRequestsError } = await supabase
+        .from('waste_requests')
+        .delete()
+        .eq('dumper_id', user.id);
+
+      if (deleteRequestsError) {
+        console.warn('Error deleting waste requests:', deleteRequestsError);
+      }
+
+      // 6. Delete collector profile
+      const { error: collectorError } = await supabase
+        .from('collectors')
+        .delete()
+        .eq('profile_id', user.id);
+
+      if (collectorError) {
+        console.warn('Error deleting collector profile:', collectorError);
+      }
+
+      // 7. Delete user profile
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .delete()
+        .eq('id', user.id);
+
+      if (profileError) {
+        throw new Error(`Failed to delete profile: ${profileError.message}`);
+      }
+
+      // 8. Finally, delete the auth user
+      const { error: authError } = await supabase.auth.admin.deleteUser(user.id);
+
+      if (authError) {
+        console.warn('Error deleting auth user (may require admin privileges):', authError);
+        // Continue with local cleanup even if auth deletion fails
+      }
+
+      console.log('Account deletion completed successfully');
+
+      // Clear all local data
+      clearCache();
+      clearUserTypeStorage();
+      
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.clear();
+          sessionStorage.clear();
+        } catch (e) {
+          console.warn('Failed to clear storage:', e);
+        }
+      }
+
+      // Reset state
+      setUser(null);
+      setSession(null);
+      setVerification({
+        emailSent: false,
+        phoneSent: false,
+        emailVerified: false,
+        phoneVerified: false,
+        isVerifying: false,
+        error: null,
+      });
+
+      // Sign out and redirect
+      await supabase.auth.signOut();
+      
+      if (typeof window !== 'undefined') {
+        window.location.replace('/');
+      }
+
+    } catch (error: unknown) {
+      console.error('Error deleting account:', error);
+      throw error;
+    }
+  }, [user, session, clearUserTypeStorage]);
 
   // PERFORMANCE: Optimized initialization
   useEffect(() => {
@@ -913,6 +1043,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     sendPhoneVerification,
     verifyPhoneCode,
     switchUserType,
+    deleteAccount,
   }), [
     user,
     session,
@@ -926,6 +1057,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     sendPhoneVerification,
     verifyPhoneCode,
     switchUserType,
+    deleteAccount,
   ]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

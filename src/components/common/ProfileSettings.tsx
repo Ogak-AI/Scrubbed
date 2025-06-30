@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ArrowLeft, User, Mail, Phone, MapPin, Save, AlertCircle, CheckCircle, Eye, Trash2, Calendar, Shield } from 'lucide-react';
+import { ArrowLeft, User, Mail, Phone, MapPin, Save, AlertCircle, CheckCircle, Eye, Trash2, Calendar, Shield, RefreshCw } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { getCountriesWithPopularFirst } from '../../utils/countries';
 
@@ -8,13 +8,14 @@ interface ProfileSettingsProps {
 }
 
 export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => {
-  const { user, updateProfile, signOut } = useAuth();
+  const { user, updateProfile, signOut, switchUserType, deleteAccount } = useAuth();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [showPersonalInfo, setShowPersonalInfo] = useState(true);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const [switchingType, setSwitchingType] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<{[key: string]: string}>({});
   
   const countries = getCountriesWithPopularFirst();
@@ -230,19 +231,55 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
     if (success) setSuccess(false);
   };
 
+  // NEW: Handle user type switching
+  const handleSwitchUserType = async () => {
+    if (!user) return;
+    
+    const newUserType = user.userType === 'dumper' ? 'collector' : 'dumper';
+    
+    if (!window.confirm(`Are you sure you want to switch to a ${newUserType === 'dumper' ? 'Customer' : 'Collector'} account? This will change your dashboard and available features.`)) {
+      return;
+    }
+
+    setSwitchingType(true);
+    try {
+      await switchUserType(newUserType);
+      setSuccess(true);
+      setError(null);
+      
+      // Show success message and close after delay
+      setTimeout(() => {
+        onClose();
+      }, 2000);
+      
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to switch account type';
+      setError(errorMessage);
+    } finally {
+      setSwitchingType(false);
+    }
+  };
+
+  // ENHANCED: Account deletion with proper confirmation
   const handleDeleteAccount = async () => {
-    if (!window.confirm('Are you absolutely sure you want to delete your account? This action cannot be undone and will permanently delete all your data.')) {
+    if (!window.confirm('⚠️ DANGER: This will permanently delete your account and ALL your data including:\n\n• Your profile information\n• All waste collection requests\n• Chat messages and conversations\n• Collector profile (if applicable)\n\nThis action CANNOT be undone!\n\nAre you absolutely sure you want to delete your account?')) {
+      return;
+    }
+
+    // Second confirmation
+    if (!window.confirm('This is your final warning. Clicking OK will immediately and permanently delete your account. Are you 100% certain?')) {
       return;
     }
 
     setDeleteLoading(true);
+    setError(null);
+    
     try {
-      alert('Account deletion is not yet implemented. Please contact support to delete your account.');
-      await signOut();
+      await deleteAccount();
+      // The deleteAccount function handles navigation, so we don't need to do anything here
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to delete account';
       setError(errorMessage);
-    } finally {
       setDeleteLoading(false);
       setShowDeleteConfirm(false);
     }
@@ -340,7 +377,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
                   }`}
                 >
                   <Eye className="h-4 w-4 inline mr-2" />
-                  Privacy & Security
+                  Account & Security
                 </button>
               </nav>
             </div>
@@ -575,7 +612,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
                       />
                     </div>
                     <p className="mt-1 text-xs text-gray-500">
-                      Account type is determined when you sign up and cannot be changed
+                      Account type determines your dashboard and available features
                     </p>
                   </div>
 
@@ -784,27 +821,64 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
                 </form>
               </div>
             ) : (
-              /* Privacy & Security Settings */
+              /* Account & Security Settings */
               <div className="bg-white rounded-xl border border-gray-200 p-6">
                 <div className="flex items-center justify-between mb-6">
                   <div>
-                    <h2 className="text-xl font-semibold text-gray-900">Privacy & Security</h2>
-                    <p className="text-sm text-gray-600 mt-1">Manage your privacy and security preferences</p>
+                    <h2 className="text-xl font-semibold text-gray-900">Account & Security</h2>
+                    <p className="text-sm text-gray-600 mt-1">Manage your account type and security preferences</p>
                   </div>
                   <div className="flex items-center space-x-2">
                     <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
-                      <Eye className="h-6 w-6 text-blue-600" />
+                      <Shield className="h-6 w-6 text-blue-600" />
                     </div>
                   </div>
                 </div>
 
                 <div className="space-y-6">
+                  {/* Account Type Switching */}
                   <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                    <h3 className="font-medium text-blue-800 mb-2">Google Account Integration</h3>
-                    <p className="text-blue-700 text-sm mb-3">
+                    <h3 className="font-medium text-blue-800 mb-2 flex items-center">
+                      <RefreshCw className="h-5 w-5 mr-2" />
+                      Switch Account Type
+                    </h3>
+                    <p className="text-blue-700 text-sm mb-4">
+                      You can switch between Customer and Collector accounts at any time. This will change your dashboard and available features.
+                    </p>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-blue-800 font-medium">Current: {getAccountTypeDisplay()}</p>
+                        <p className="text-blue-600 text-sm">
+                          Switch to: {user?.userType === 'dumper' ? 'Collector Account' : 'Customer Account'}
+                        </p>
+                      </div>
+                      <button
+                        onClick={handleSwitchUserType}
+                        disabled={switchingType}
+                        className="bg-blue-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm flex items-center"
+                      >
+                        {switchingType ? (
+                          <>
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                            Switching...
+                          </>
+                        ) : (
+                          <>
+                            <RefreshCw className="h-4 w-4 mr-2" />
+                            Switch Account
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Google Account Integration */}
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                    <h3 className="font-medium text-green-800 mb-2">Google Account Integration</h3>
+                    <p className="text-green-700 text-sm mb-3">
                       Your account is connected to Google. This provides secure authentication and access to your basic profile information.
                     </p>
-                    <div className="text-blue-700 text-sm space-y-1">
+                    <div className="text-green-700 text-sm space-y-1">
                       <p>• <strong>Name:</strong> Used for personalization and communication</p>
                       <p>• <strong>Email:</strong> Used for account identification and notifications</p>
                       <p>• <strong>Profile Picture:</strong> Used for account display (if available)</p>
@@ -845,8 +919,16 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
                       Delete Account
                     </h3>
                     <p className="text-red-700 text-sm mb-4">
-                      Permanently delete your account and all associated data. This action cannot be undone.
+                      Permanently delete your account and all associated data. This action cannot be undone and will remove:
                     </p>
+                    
+                    <div className="text-red-700 text-sm mb-4 space-y-1">
+                      <p>• Your profile information and settings</p>
+                      <p>• All waste collection requests and history</p>
+                      <p>• Chat messages and conversations</p>
+                      <p>• Collector profile and ratings (if applicable)</p>
+                      <p>• All uploaded photos and documents</p>
+                    </div>
                     
                     {!showDeleteConfirm ? (
                       <button
@@ -861,7 +943,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onClose }) => 
                         <div className="bg-red-100 border border-red-300 rounded-lg p-3">
                           <p className="text-red-800 text-sm font-medium mb-2">⚠️ Are you absolutely sure?</p>
                           <p className="text-red-700 text-sm">
-                            This will permanently delete your account, all your data, and cannot be undone.
+                            This will permanently delete your account, all your data, and cannot be undone. You will lose access to all your waste collection requests, chat history, and profile information.
                           </p>
                         </div>
                         <div className="flex space-x-3">
