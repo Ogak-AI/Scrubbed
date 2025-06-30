@@ -45,26 +45,42 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     return 'http://localhost:5173';
   }, []);
 
-  // PERFORMANCE: Memoize user type extraction functions
+  // CRITICAL FIX: Enhanced user type extraction with better fallback logic
   const extractUserTypeFromUrl = useCallback((): string | null => {
     if (typeof window === 'undefined') return null;
     
     try {
+      // First, check the hash for OAuth callback
       const hash = window.location.hash;
       if (hash.includes('access_token') && hash.includes('state=')) {
         const stateMatch = hash.match(/state=([^&]+)/);
         if (stateMatch) {
           const decodedState = decodeURIComponent(stateMatch[1]);
+          console.log('Extracted state from hash:', decodedState);
           const stateData = JSON.parse(atob(decodedState));
+          console.log('Parsed state data:', stateData);
           return stateData.user_type || null;
         }
       }
       
+      // Check URL search params
       const urlParams = new URLSearchParams(window.location.search);
       const state = urlParams.get('state');
       if (state) {
+        console.log('Extracted state from search params:', state);
         const stateData = JSON.parse(atob(state));
+        console.log('Parsed state data from search:', stateData);
         return stateData.user_type || null;
+      }
+
+      // Check current path for user type
+      const path = window.location.pathname;
+      if (path.includes('/auth/collector')) {
+        console.log('Detected collector from path');
+        return 'collector';
+      } else if (path.includes('/auth/dumper')) {
+        console.log('Detected dumper from path');
+        return 'dumper';
       }
     } catch (error) {
       console.warn('Failed to extract user type from URL:', error);
@@ -73,21 +89,44 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     return null;
   }, []);
 
+  // CRITICAL FIX: Enhanced user type storage and retrieval
   const storeUserTypeForOAuth = useCallback((userType: string) => {
     if (typeof window !== 'undefined') {
+      console.log('Storing user type for OAuth:', userType);
       localStorage.setItem('pending_user_type', userType);
+      localStorage.setItem('oauth_user_type', userType);
+      // Also store with timestamp for debugging
+      localStorage.setItem('oauth_user_type_timestamp', Date.now().toString());
     }
   }, []);
 
   const getPendingUserType = useCallback((): string | null => {
     if (typeof window !== 'undefined') {
+      // Check multiple storage keys for user type
       const pendingType = localStorage.getItem('pending_user_type');
+      const oauthType = localStorage.getItem('oauth_user_type');
+      
+      console.log('Getting pending user type:', { pendingType, oauthType });
+      
       if (pendingType) {
-        localStorage.removeItem('pending_user_type');
+        console.log('Found pending user type:', pendingType);
         return pendingType;
+      }
+      
+      if (oauthType) {
+        console.log('Found OAuth user type:', oauthType);
+        return oauthType;
       }
     }
     return null;
+  }, []);
+
+  const clearUserTypeStorage = useCallback(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('pending_user_type');
+      localStorage.removeItem('oauth_user_type');
+      localStorage.removeItem('oauth_user_type_timestamp');
+    }
   }, []);
 
   // PERFORMANCE: Optimized display name function
@@ -100,28 +139,53 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
            (supabaseUser.email ? supabaseUser.email.split('@')[0].charAt(0).toUpperCase() + supabaseUser.email.split('@')[0].slice(1) : 'User');
   }, []);
 
-  // PERFORMANCE: Memoized basic user creation
-  const createBasicUser = useCallback((userId: string): User => {
-    let userType: 'dumper' | 'collector' = 'dumper';
-    
-    if (session?.user?.user_metadata?.user_type) {
-      userType = session.user.user_metadata.user_type;
-    } else {
-      const pendingType = getPendingUserType();
-      if (pendingType === 'collector' || pendingType === 'dumper') {
-        userType = pendingType as 'dumper' | 'collector';
-      } else {
-        const urlType = extractUserTypeFromUrl();
-        if (urlType === 'collector' || urlType === 'dumper') {
-          userType = urlType as 'dumper' | 'collector';
-        }
-      }
+  // CRITICAL FIX: Enhanced user type determination with proper priority
+  const determineUserType = useCallback((supabaseUser: SupabaseUser): 'dumper' | 'collector' => {
+    console.log('Determining user type for user:', supabaseUser.id);
+    console.log('User metadata:', supabaseUser.user_metadata);
+    console.log('App metadata:', supabaseUser.app_metadata);
+
+    // Priority 1: Check user metadata (set during OAuth)
+    if (supabaseUser.user_metadata?.user_type) {
+      console.log('Found user type in user_metadata:', supabaseUser.user_metadata.user_type);
+      return supabaseUser.user_metadata.user_type as 'dumper' | 'collector';
     }
+
+    // Priority 2: Check app metadata
+    if (supabaseUser.app_metadata?.user_type) {
+      console.log('Found user type in app_metadata:', supabaseUser.app_metadata.user_type);
+      return supabaseUser.app_metadata.user_type as 'dumper' | 'collector';
+    }
+
+    // Priority 3: Check localStorage
+    const pendingType = getPendingUserType();
+    if (pendingType === 'collector' || pendingType === 'dumper') {
+      console.log('Found user type in localStorage:', pendingType);
+      return pendingType as 'dumper' | 'collector';
+    }
+
+    // Priority 4: Check URL
+    const urlType = extractUserTypeFromUrl();
+    if (urlType === 'collector' || urlType === 'dumper') {
+      console.log('Found user type in URL:', urlType);
+      return urlType as 'dumper' | 'collector';
+    }
+
+    // Default fallback
+    console.log('No user type found, defaulting to dumper');
+    return 'dumper';
+  }, [getPendingUserType, extractUserTypeFromUrl]);
+
+  // PERFORMANCE: Memoized basic user creation with enhanced user type logic
+  const createBasicUser = useCallback((userId: string, supabaseUser?: SupabaseUser): User => {
+    const userType = supabaseUser ? determineUserType(supabaseUser) : 'dumper';
+    
+    console.log('Creating basic user with type:', userType);
     
     return {
       id: userId,
-      email: session?.user?.email || '',
-      fullName: getDisplayName(session?.user || {} as SupabaseUser) || null,
+      email: supabaseUser?.email || session?.user?.email || '',
+      fullName: supabaseUser ? getDisplayName(supabaseUser) : (session?.user ? getDisplayName(session.user) : null),
       userType: userType,
       phone: null,
       address: null,
@@ -130,7 +194,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
-  }, [session?.user, getPendingUserType, extractUserTypeFromUrl, getDisplayName]);
+  }, [session?.user, determineUserType, getDisplayName]);
 
   // PERFORMANCE: Optimized profile existence check with caching
   const ensureProfileExists = useCallback(async (supabaseUser?: SupabaseUser) => {
@@ -143,28 +207,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     try {
       const { data, error: checkError } = await supabase
         .from('profiles')
-        .select('id')
+        .select('id, user_type')
         .eq('id', supabaseUser.id)
         .single();
 
       if (checkError && checkError.code === 'PGRST116') {
-        let userType: 'dumper' | 'collector' = 'dumper';
+        // Profile doesn't exist, create it
+        const userType = determineUserType(supabaseUser);
         
-        if (supabaseUser.user_metadata?.user_type) {
-          userType = supabaseUser.user_metadata.user_type;
-        } else if (supabaseUser.app_metadata?.user_type) {
-          userType = supabaseUser.app_metadata.user_type;
-        } else {
-          const pendingType = getPendingUserType();
-          if (pendingType === 'collector' || pendingType === 'dumper') {
-            userType = pendingType as 'dumper' | 'collector';
-          } else {
-            const urlType = extractUserTypeFromUrl();
-            if (urlType === 'collector' || urlType === 'dumper') {
-              userType = urlType as 'dumper' | 'collector';
-            }
-          }
-        }
+        console.log('Creating new profile with user type:', userType);
         
         const profileData = {
           id: supabaseUser.id,
@@ -184,8 +235,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         if (profileError) {
           throw new Error(`Failed to create profile: ${profileError.message}`);
         }
+
+        console.log('Profile created successfully with user type:', userType);
       } else if (checkError) {
         throw new Error(`Profile check failed: ${checkError.message}`);
+      } else if (data) {
+        console.log('Existing profile found with user type:', data.user_type);
       }
 
       // Cache the result for 5 minutes
@@ -194,14 +249,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       console.error('Error ensuring profile exists:', error);
       throw error;
     }
-  }, [getPendingUserType, extractUserTypeFromUrl, getDisplayName]);
+  }, [determineUserType, getDisplayName]);
 
   // PERFORMANCE: Optimized profile fetching with caching and timeout
-  const fetchUserProfile = useCallback(async (userId: string) => {
+  const fetchUserProfile = useCallback(async (userId: string, supabaseUser?: SupabaseUser) => {
     const cacheKey = `user_profile_${userId}`;
     const cached = getCachedData<User>(cacheKey);
     
     if (cached) {
+      console.log('Using cached user profile:', cached);
       setUser(cached);
       setLoading(false);
       setInitialized(true);
@@ -224,7 +280,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
       if (error && error.code !== 'PGRST116') {
         console.error('Error fetching user profile:', error);
-        const basicUser = createBasicUser(userId);
+        const basicUser = createBasicUser(userId, supabaseUser);
+        console.log('Using basic user fallback:', basicUser);
         setUser(basicUser);
         setCachedData(cacheKey, basicUser, 60000); // Cache for 1 minute
         setLoading(false);
@@ -246,6 +303,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           updatedAt: data.updated_at,
         };
         
+        console.log('Fetched user profile from database:', userData);
         setUser(userData);
         setCachedData(cacheKey, userData, 300000); // Cache for 5 minutes
         
@@ -255,26 +313,28 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           phoneVerified: userData.phoneVerified,
         }));
       } else {
-        const basicUser = createBasicUser(userId);
+        const basicUser = createBasicUser(userId, supabaseUser);
+        console.log('No profile found, using basic user:', basicUser);
         setUser(basicUser);
         setCachedData(cacheKey, basicUser, 60000);
         
         try {
-          await ensureProfileExists(session?.user);
+          await ensureProfileExists(supabaseUser);
         } catch (profileError) {
           console.error('Failed to create profile:', profileError);
         }
       }
     } catch (error: unknown) {
       console.error('Error fetching user profile:', error);
-      const fallbackUser = createBasicUser(userId);
+      const fallbackUser = createBasicUser(userId, supabaseUser);
+      console.log('Using fallback user:', fallbackUser);
       setUser(fallbackUser);
       setCachedData(cacheKey, fallbackUser, 60000);
     } finally {
       setLoading(false);
       setInitialized(true);
     }
-  }, [session?.user, createBasicUser, ensureProfileExists]);
+  }, [createBasicUser, ensureProfileExists]);
 
   // PERFORMANCE: Optimized initialization
   useEffect(() => {
@@ -313,7 +373,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         if (session?.user) {
           try {
             await ensureProfileExists(session.user);
-            await fetchUserProfile(session.user.id);
+            await fetchUserProfile(session.user.id, session.user);
           } catch (profileError) {
             console.error('Profile error:', profileError);
             setLoading(false);
@@ -341,11 +401,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
     initializeAuth();
 
-    // Optimized auth state change listener
+    // CRITICAL FIX: Enhanced auth state change listener
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!mounted) return;
+
+      console.log('Auth state change:', event, session?.user?.id);
 
       if (initializationTimeout) {
         clearTimeout(initializationTimeout);
@@ -359,15 +421,20 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       
       if (session?.user) {
         if (event === 'SIGNED_IN') {
+          console.log('User signed in, ensuring profile exists');
           try {
             await ensureProfileExists(session.user);
+            // Clear user type storage after successful profile creation
+            setTimeout(() => {
+              clearUserTypeStorage();
+            }, 1000);
           } catch (error) {
             console.error('Error in sign-in process:', error);
           }
         }
         
         try {
-          await fetchUserProfile(session.user.id);
+          await fetchUserProfile(session.user.id, session.user);
         } catch (error) {
           console.error('Error fetching profile:', error);
           setLoading(false);
@@ -376,6 +443,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       } else {
         setUser(null);
         clearCache(); // Clear cache on sign out
+        clearUserTypeStorage(); // Clear user type storage
         setLoading(false);
         setInitialized(true);
       }
@@ -388,19 +456,27 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       }
       subscription.unsubscribe();
     };
-  }, [ensureProfileExists, fetchUserProfile, initialized]);
+  }, [ensureProfileExists, fetchUserProfile, initialized, clearUserTypeStorage]);
 
-  // PERFORMANCE: Optimized sign in function
+  // CRITICAL FIX: Enhanced sign in function with better state management
   const signInWithGoogle = useCallback(async (userType: 'dumper' | 'collector') => {
     setLoading(true);
     
     try {
+      console.log('Starting Google sign-in for user type:', userType);
+      
+      // Store user type in multiple places for reliability
       storeUserTypeForOAuth(userType);
       
       const stateData = {
         user_type: userType,
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        source: 'google_oauth'
       };
+      
+      const encodedState = btoa(JSON.stringify(stateData));
+      console.log('OAuth state data:', stateData);
+      console.log('Encoded state:', encodedState);
       
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
@@ -410,7 +486,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             access_type: 'offline',
             prompt: 'consent',
           },
-          state: btoa(JSON.stringify(stateData)),
+          state: encodedState,
         },
       });
 
@@ -433,11 +509,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       
       // Clear cache and local storage first
       clearCache();
+      clearUserTypeStorage();
       
       if (typeof window !== 'undefined') {
         try {
           localStorage.removeItem('supabase.auth.token');
-          localStorage.removeItem('pending_user_type');
           // Clear any Supabase auth tokens
           const keys = Object.keys(localStorage);
           keys.forEach(key => {
@@ -489,7 +565,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         window.location.replace('/');
       }
     }
-  }, []);
+  }, [clearUserTypeStorage]);
 
   // CRITICAL FIX: Enhanced profile update function with immediate state update
   const updateProfile = useCallback(async (updates: Partial<User>) => {
