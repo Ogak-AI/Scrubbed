@@ -42,7 +42,7 @@ try {
         autoRefreshToken: true,
         persistSession: true,
         detectSessionInUrl: true,
-        refreshTokenRetryCount: 2,
+        refreshTokenRetryCount: 1, // Reduced from 2
         storage: {
           getItem: (key: string) => {
             if (typeof window !== 'undefined') {
@@ -72,11 +72,11 @@ try {
       },
       realtime: {
         params: {
-          eventsPerSecond: 1,
+          eventsPerSecond: 0.5, // Reduced from 1
         },
-        heartbeatIntervalMs: 60000,
-        reconnectAfterMs: (tries: number) => Math.min(tries * 2000, 30000),
-        timeout: 20000,
+        heartbeatIntervalMs: 120000, // Increased from 60000
+        reconnectAfterMs: (tries: number) => Math.min(tries * 5000, 60000), // Increased delays
+        timeout: 30000, // Increased from 20000
       },
     });
   } else {
@@ -131,18 +131,55 @@ try {
 
 export { supabase };
 
-// Cache for frequently accessed data
+// CRITICAL FIX: Improved cache with size limits and automatic cleanup
+const MAX_CACHE_SIZE = 50; // Reduced from unlimited
 const cache = new Map<string, { data: any; timestamp: number; ttl: number }>();
+
+// Cleanup old cache entries
+const cleanupCache = () => {
+  const now = Date.now();
+  const entries = Array.from(cache.entries());
+  
+  // Remove expired entries
+  for (const [key, value] of entries) {
+    if (now - value.timestamp > value.ttl) {
+      cache.delete(key);
+    }
+  }
+  
+  // If still too large, remove oldest entries
+  if (cache.size > MAX_CACHE_SIZE) {
+    const sortedEntries = entries
+      .filter(([key]) => cache.has(key)) // Only include non-expired entries
+      .sort((a, b) => a[1].timestamp - b[1].timestamp);
+    
+    const toRemove = sortedEntries.slice(0, cache.size - MAX_CACHE_SIZE);
+    for (const [key] of toRemove) {
+      cache.delete(key);
+    }
+  }
+};
 
 export const getCachedData = <T>(key: string, ttl: number = 30000): T | null => {
   const cached = cache.get(key);
   if (cached && Date.now() - cached.timestamp < cached.ttl) {
     return cached.data as T;
   }
+  
+  // Clean up expired entry
+  if (cached) {
+    cache.delete(key);
+  }
+  
   return null;
 };
 
 export const setCachedData = <T>(key: string, data: T, ttl: number = 30000): void => {
+  // Clean up cache before adding new entry
+  if (cache.size >= MAX_CACHE_SIZE) {
+    cleanupCache();
+  }
+  
   cache.set(key, { data, timestamp: Date.now(), ttl });
 };
 
@@ -158,15 +195,17 @@ export const clearCache = (pattern?: string): void => {
   }
 };
 
-// Debounced realtime subscription helper
-let subscriptionDebounceTimer: NodeJS.Timeout;
-
+// CRITICAL FIX: Disable realtime subscriptions temporarily to prevent resource exhaustion
 export const createOptimizedRealtimeSubscription = (
   table: string,
   callback: (payload: unknown) => void,
   options: { event?: string; filter?: string; debounceMs?: number } = {}
 ) => {
-  const { debounceMs = 1000 } = options;
+  console.log(`Realtime subscription disabled for ${table} to prevent resource exhaustion`);
+  return null;
+  
+  /*
+  const { debounceMs = 2000 } = options; // Increased default debounce
   
   if (typeof WebSocket === 'undefined' || import.meta.env.SSR) {
     console.log('Realtime not available, skipping subscription');
@@ -176,12 +215,13 @@ export const createOptimizedRealtimeSubscription = (
   try {
     const channelName = `${table}_optimized_${Date.now()}`;
     
+    let debounceTimer: NodeJS.Timeout;
     const debouncedCallback = (payload: unknown) => {
-      if (subscriptionDebounceTimer) {
-        clearTimeout(subscriptionDebounceTimer);
+      if (debounceTimer) {
+        clearTimeout(debounceTimer);
       }
       
-      subscriptionDebounceTimer = setTimeout(() => {
+      debounceTimer = setTimeout(() => {
         try {
           callback(payload);
         } catch (error) {
@@ -215,12 +255,13 @@ export const createOptimizedRealtimeSubscription = (
     console.warn('Failed to create realtime subscription:', error);
     return null;
   }
+  */
 };
 
 // Batch database operations
 export const batchOperations = async <T>(
   operations: (() => Promise<T>)[],
-  batchSize: number = 5
+  batchSize: number = 3 // Reduced from 5
 ): Promise<T[]> => {
   const results: T[] = [];
   
@@ -228,6 +269,11 @@ export const batchOperations = async <T>(
     const batch = operations.slice(i, i + batchSize);
     const batchResults = await Promise.all(batch.map(op => op()));
     results.push(...batchResults);
+    
+    // Add small delay between batches to prevent overwhelming the server
+    if (i + batchSize < operations.length) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
   }
   
   return results;
@@ -287,4 +333,9 @@ if (supabase && supabase.auth && supabase.auth.onAuthStateChange) {
       }
     }
   });
+}
+
+// CRITICAL FIX: Periodic cache cleanup to prevent memory leaks
+if (typeof window !== 'undefined') {
+  setInterval(cleanupCache, 60000); // Clean up every minute
 }

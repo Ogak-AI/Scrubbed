@@ -19,6 +19,7 @@ export const useWasteRequests = () => {
   const [requests, setRequests] = useState<WasteRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [initialized, setInitialized] = useState(false);
 
   // PERFORMANCE: Memoize cache key
   const cacheKey = useMemo(() => 
@@ -78,18 +79,16 @@ export const useWasteRequests = () => {
     }
   }, [user]);
 
-  // PERFORMANCE: Optimized fetch with caching and reduced timeout
+  // CRITICAL FIX: Prevent infinite loops with better state management
   const fetchRequests = useCallback(async () => {
-    if (!user || !cacheKey) {
-      setLoading(false);
+    if (!user || !cacheKey || loading) {
       return;
     }
 
     // Check cache first
     const cached = getCachedData<WasteRequest[]>(cacheKey);
-    if (cached) {
+    if (cached && initialized) {
       setRequests(cached);
-      setLoading(false);
       return;
     }
 
@@ -97,14 +96,14 @@ export const useWasteRequests = () => {
       setLoading(true);
       setError(null);
 
-      // Reduced timeout for better UX
+      // Shorter timeout for better UX
       const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Request timeout')), 5000); // Reduced from 8s to 5s
+        setTimeout(() => reject(new Error('Request timeout')), 3000); // Reduced to 3 seconds
       });
 
       const fetchPromise = (async () => {
-        // Skip profile check if we already have requests cached
-        if (requests.length === 0) {
+        // Only ensure profile exists if we haven't initialized yet
+        if (!initialized) {
           await ensureUserProfileExists();
         }
 
@@ -128,7 +127,7 @@ export const useWasteRequests = () => {
             updated_at
           `)
           .order('created_at', { ascending: false })
-          .limit(25); // Reduced from 50 to 25 for faster loading
+          .limit(20); // Reduced limit for better performance
 
         // More efficient filtering
         if (user.userType === 'dumper') {
@@ -141,7 +140,7 @@ export const useWasteRequests = () => {
               .select('*')
               .eq('collector_id', user.id)
               .order('created_at', { ascending: false })
-              .limit(15),
+              .limit(10),
             supabase
               .from('waste_requests')
               .select('*')
@@ -196,6 +195,7 @@ export const useWasteRequests = () => {
       
       // Cache the results for 2 minutes
       setCachedData(cacheKey, formattedRequests, 120000);
+      setInitialized(true);
       
     } catch (err: unknown) {
       console.error('Error fetching requests:', err);
@@ -205,7 +205,7 @@ export const useWasteRequests = () => {
     } finally {
       setLoading(false);
     }
-  }, [user, cacheKey, ensureUserProfileExists, requests.length]);
+  }, [user, cacheKey, ensureUserProfileExists, loading, initialized]);
 
   // PERFORMANCE: Optimized create request function
   const createRequest = useCallback(async (requestData: CreateRequestData) => {
@@ -373,19 +373,32 @@ export const useWasteRequests = () => {
     }
   }, [user, cacheKey]);
 
-  // PERFORMANCE: Only fetch on user change
+  // CRITICAL FIX: Only fetch once on mount and when user changes
   useEffect(() => {
-    if (user) {
-      fetchRequests();
-    } else {
+    let mounted = true;
+    
+    if (user && !initialized) {
+      fetchRequests().finally(() => {
+        if (mounted) {
+          setLoading(false);
+        }
+      });
+    } else if (!user) {
       setLoading(false);
       setRequests([]);
+      setInitialized(false);
     }
+
+    return () => {
+      mounted = false;
+    };
   }, [user?.id, user?.userType]); // Only depend on user ID and type
 
-  // PERFORMANCE: Optimized real-time subscription with longer debounce
+  // CRITICAL FIX: Disable real-time subscriptions temporarily to prevent resource exhaustion
+  // This can be re-enabled once the core issues are resolved
+  /*
   useEffect(() => {
-    if (!user) return;
+    if (!user || !initialized) return;
 
     let channel: ReturnType<typeof createOptimizedRealtimeSubscription> = null;
     
@@ -416,7 +429,7 @@ export const useWasteRequests = () => {
         },
         {
           filter: user.userType === 'dumper' ? `dumper_id=eq.${user.id}` : undefined,
-          debounceMs: 2000 // Increased debounce for better performance
+          debounceMs: 5000 // Increased debounce for better performance
         }
       );
 
@@ -434,7 +447,8 @@ export const useWasteRequests = () => {
         }
       }
     };
-  }, [user?.id, user?.userType, cacheKey, fetchRequests]);
+  }, [user?.id, user?.userType, cacheKey, fetchRequests, initialized]);
+  */
 
   return {
     requests,

@@ -9,6 +9,7 @@ export const useCollectors = () => {
   const [myCollectorProfile, setMyCollectorProfile] = useState<Collector | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [initialized, setInitialized] = useState(false);
 
   // PERFORMANCE: Memoize cache keys
   const collectorsCacheKey = 'available_collectors';
@@ -63,11 +64,13 @@ export const useCollectors = () => {
     }
   }, [user]);
 
-  // PERFORMANCE: Optimized fetch collectors with caching
+  // CRITICAL FIX: Prevent infinite loops
   const fetchCollectors = useCallback(async () => {
+    if (loading) return;
+
     // Check cache first
     const cached = getCachedData<Collector[]>(collectorsCacheKey);
-    if (cached) {
+    if (cached && initialized) {
       setCollectors(cached);
       return;
     }
@@ -80,7 +83,7 @@ export const useCollectors = () => {
         .select('*')
         .eq('is_available', true)
         .order('rating', { ascending: false, nullsLast: true })
-        .limit(20); // Limit for better performance
+        .limit(15); // Reduced limit for better performance
 
       if (fetchError) throw fetchError;
 
@@ -101,22 +104,23 @@ export const useCollectors = () => {
       
       // Cache for 5 minutes
       setCachedData(collectorsCacheKey, formattedCollectors, 300000);
+      setInitialized(true);
     } catch (err: unknown) {
       console.error('Error fetching collectors:', err);
       const errorMessage = err instanceof Error ? err.message : 'Failed to fetch collectors';
       setError(errorMessage);
     }
-  }, []);
+  }, [loading, initialized]);
 
-  // PERFORMANCE: Optimized fetch my collector profile with caching
+  // CRITICAL FIX: Prevent infinite loops
   const fetchMyCollectorProfile = useCallback(async () => {
-    if (!user || user.userType !== 'collector' || !myProfileCacheKey) {
+    if (!user || user.userType !== 'collector' || !myProfileCacheKey || loading) {
       return;
     }
 
     // Check cache first
     const cached = getCachedData<Collector | null>(myProfileCacheKey);
-    if (cached !== null) {
+    if (cached !== null && initialized) {
       setMyCollectorProfile(cached);
       return;
     }
@@ -176,7 +180,7 @@ export const useCollectors = () => {
       setError(errorMessage);
       setMyCollectorProfile(null);
     }
-  }, [user, myProfileCacheKey]);
+  }, [user, myProfileCacheKey, loading, initialized]);
 
   // PERFORMANCE: Optimized create collector profile
   const createCollectorProfile = useCallback(async (profileData: {
@@ -323,9 +327,13 @@ export const useCollectors = () => {
     }
   }, [myCollectorProfile, myProfileCacheKey]);
 
-  // PERFORMANCE: Optimized initialization
+  // CRITICAL FIX: Only initialize once
   useEffect(() => {
+    let mounted = true;
+    
     const initializeCollectors = async () => {
+      if (initialized || loading) return;
+      
       try {
         setLoading(true);
         setError(null);
@@ -343,15 +351,22 @@ export const useCollectors = () => {
         const errorMessage = err instanceof Error ? err.message : 'Failed to initialize collectors';
         setError(errorMessage);
       } finally {
-        setLoading(false);
+        if (mounted) {
+          setLoading(false);
+        }
       }
     };
 
-    if (user) {
+    if (user && !initialized) {
       initializeCollectors();
-    } else {
+    } else if (!user) {
       setLoading(false);
+      setInitialized(false);
     }
+
+    return () => {
+      mounted = false;
+    };
   }, [user?.id, user?.userType]); // Only depend on user ID and type
 
   return {

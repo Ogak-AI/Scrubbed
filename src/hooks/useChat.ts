@@ -11,6 +11,7 @@ export const useChat = (requestId?: string) => {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [initialized, setInitialized] = useState(false);
 
   // Cache keys
   const conversationsCacheKey = useMemo(() => 
@@ -23,13 +24,13 @@ export const useChat = (requestId?: string) => {
     [activeConversation?.id]
   );
 
-  // Fetch conversations for the current user
+  // CRITICAL FIX: Prevent infinite loops
   const fetchConversations = useCallback(async () => {
-    if (!user || !conversationsCacheKey) return;
+    if (!user || !conversationsCacheKey || loading) return;
 
     // Check cache first
     const cached = getCachedData<ChatConversation[]>(conversationsCacheKey);
-    if (cached) {
+    if (cached && initialized) {
       setConversations(cached);
       return;
     }
@@ -42,7 +43,8 @@ export const useChat = (requestId?: string) => {
         .select('*')
         .or(`dumper_id.eq.${user.id},collector_id.eq.${user.id}`)
         .eq('is_active', true)
-        .order('last_message_at', { ascending: false, nullsLast: true });
+        .order('last_message_at', { ascending: false, nullsLast: true })
+        .limit(20); // Add limit for performance
 
       if (fetchError) throw fetchError;
 
@@ -62,21 +64,22 @@ export const useChat = (requestId?: string) => {
 
       setConversations(formattedConversations);
       setCachedData(conversationsCacheKey, formattedConversations, 120000); // 2 minutes cache
+      setInitialized(true);
 
     } catch (err: unknown) {
       console.error('Error fetching conversations:', err);
       const errorMessage = err instanceof Error ? err.message : 'Failed to fetch conversations';
       setError(errorMessage);
     }
-  }, [user, conversationsCacheKey]);
+  }, [user, conversationsCacheKey, loading, initialized]);
 
-  // Fetch messages for a specific conversation
+  // CRITICAL FIX: Prevent infinite loops
   const fetchMessages = useCallback(async (conversationId: string) => {
-    if (!messagesCacheKey) return;
+    if (!messagesCacheKey || loading) return;
 
     // Check cache first
     const cached = getCachedData<ChatMessage[]>(messagesCacheKey);
-    if (cached) {
+    if (cached && initialized) {
       setMessages(cached);
       return;
     }
@@ -88,7 +91,8 @@ export const useChat = (requestId?: string) => {
         .from('chat_messages')
         .select('*')
         .eq('conversation_id', conversationId)
-        .order('created_at', { ascending: true });
+        .order('created_at', { ascending: true })
+        .limit(100); // Add limit for performance
 
       if (fetchError) throw fetchError;
 
@@ -118,7 +122,7 @@ export const useChat = (requestId?: string) => {
       const errorMessage = err instanceof Error ? err.message : 'Failed to fetch messages';
       setError(errorMessage);
     }
-  }, [messagesCacheKey, user]);
+  }, [messagesCacheKey, user, loading, initialized]);
 
   // Create or get conversation for a request
   const getOrCreateConversation = useCallback(async (requestId: string, dumperId: string, collectorId: string) => {
@@ -347,22 +351,35 @@ export const useChat = (requestId?: string) => {
     }, 0);
   }, [conversations, user]);
 
-  // Initialize
+  // CRITICAL FIX: Only initialize once
   useEffect(() => {
-    if (user) {
+    let mounted = true;
+    
+    if (user && !initialized) {
       setLoading(true);
-      fetchConversations().finally(() => setLoading(false));
-    } else {
+      fetchConversations().finally(() => {
+        if (mounted) {
+          setLoading(false);
+        }
+      });
+    } else if (!user) {
       setLoading(false);
       setConversations([]);
       setMessages([]);
       setActiveConversation(null);
+      setInitialized(false);
     }
-  }, [user?.id, fetchConversations]);
 
-  // Real-time subscriptions
+    return () => {
+      mounted = false;
+    };
+  }, [user?.id]); // Only depend on user ID
+
+  // CRITICAL FIX: Disable real-time subscriptions temporarily to prevent resource exhaustion
+  // This can be re-enabled once the core issues are resolved
+  /*
   useEffect(() => {
-    if (!user) return;
+    if (!user || !initialized) return;
 
     let conversationsChannel: ReturnType<typeof createOptimizedRealtimeSubscription> = null;
     let messagesChannel: ReturnType<typeof createOptimizedRealtimeSubscription> = null;
@@ -378,7 +395,7 @@ export const useChat = (requestId?: string) => {
       },
       {
         filter: `dumper_id=eq.${user.id},collector_id=eq.${user.id}`,
-        debounceMs: 1000
+        debounceMs: 2000
       }
     );
 
@@ -394,7 +411,7 @@ export const useChat = (requestId?: string) => {
         },
         {
           filter: `conversation_id=eq.${activeConversation.id}`,
-          debounceMs: 500
+          debounceMs: 1000
         }
       );
     }
@@ -415,7 +432,8 @@ export const useChat = (requestId?: string) => {
         }
       }
     };
-  }, [user?.id, activeConversation?.id, conversationsCacheKey, messagesCacheKey, fetchConversations, fetchMessages]);
+  }, [user?.id, activeConversation?.id, conversationsCacheKey, messagesCacheKey, fetchConversations, fetchMessages, initialized]);
+  */
 
   return {
     conversations,
