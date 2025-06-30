@@ -36,13 +36,6 @@ const AppContent: React.FC = () => {
     );
   }
 
-  // CRITICAL CHANGE: No verification checks - go directly to dashboard
-  // Phone verification is completely removed from the flow
-  console.log('App.tsx - No Verification Required:', {
-    userType: user.userType,
-    decision: 'SHOW_DASHBOARD_DIRECTLY'
-  });
-
   // Get the appropriate dashboard component based on user type
   const getDashboardComponent = () => {
     console.log('Showing dashboard for user type:', user.userType);
@@ -58,7 +51,7 @@ const AppContent: React.FC = () => {
     }
   };
 
-  // User is authenticated - show their dashboard directly (no verification required)
+  // User is authenticated - show their dashboard directly
   return (
     <Router>
       <Routes>
@@ -70,9 +63,6 @@ const AppContent: React.FC = () => {
         <Route path="/dumper" element={<DumperDashboard />} />
         <Route path="/collector" element={<CollectorDashboard />} />
         <Route path="/admin" element={<AdminDashboard />} />
-        
-        {/* Remove verification route completely - redirect to dashboard */}
-        <Route path="/verify" element={<Navigate to="/" replace />} />
         
         {/* Redirect any auth routes to dashboard if already logged in */}
         <Route path="/auth/*" element={<Navigate to="/" replace />} />

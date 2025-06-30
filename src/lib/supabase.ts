@@ -22,12 +22,12 @@ if (supabaseUrl && (supabaseUrl.includes('placeholder') || supabaseUrl.includes(
   console.warn('Supabase will not be available - using fallback mode');
 }
 
-// FIXED: Get the current origin dynamically instead of hardcoding domain
+// Get the current origin dynamically instead of hardcoding domain
 const getCurrentOrigin = () => {
   if (typeof window !== 'undefined') {
     return window.location.origin;
   }
-  // Fallback for server-side rendering - will be replaced by actual deployment URL
+  // Fallback for server-side rendering
   return 'http://localhost:5173';
 };
 
@@ -38,13 +38,11 @@ try {
   if (supabaseUrl && supabaseAnonKey) {
     supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
       auth: {
-        // FIXED: Use dynamic origin instead of hardcoded domain
         redirectTo: getCurrentOrigin(),
         autoRefreshToken: true,
         persistSession: true,
         detectSessionInUrl: true,
         refreshTokenRetryCount: 2,
-        // Use localStorage for better performance
         storage: {
           getItem: (key: string) => {
             if (typeof window !== 'undefined') {
@@ -72,7 +70,6 @@ try {
           'x-my-custom-header': 'scrubbed-app',
         },
       },
-      // OPTIMIZED: Better realtime configuration for performance
       realtime: {
         params: {
           eventsPerSecond: 1,
@@ -134,7 +131,7 @@ try {
 
 export { supabase };
 
-// PERFORMANCE: Cache for frequently accessed data
+// Cache for frequently accessed data
 const cache = new Map<string, { data: any; timestamp: number; ttl: number }>();
 
 export const getCachedData = <T>(key: string, ttl: number = 30000): T | null => {
@@ -161,7 +158,7 @@ export const clearCache = (pattern?: string): void => {
   }
 };
 
-// OPTIMIZED: Debounced realtime subscription helper
+// Debounced realtime subscription helper
 let subscriptionDebounceTimer: NodeJS.Timeout;
 
 export const createOptimizedRealtimeSubscription = (
@@ -220,7 +217,7 @@ export const createOptimizedRealtimeSubscription = (
   }
 };
 
-// PERFORMANCE: Batch database operations
+// Batch database operations
 export const batchOperations = async <T>(
   operations: (() => Promise<T>)[],
   batchSize: number = 5
