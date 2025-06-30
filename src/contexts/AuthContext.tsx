@@ -15,6 +15,7 @@ interface AuthContextType {
   resendEmailVerification: () => Promise<void>;
   sendPhoneVerification: (phone: string) => Promise<void>;
   verifyPhoneCode: (code: string) => Promise<void>;
+  switchUserType: (newUserType: 'dumper' | 'collector') => Promise<void>;
 }
 
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -140,11 +141,34 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   }, []);
 
   // CRITICAL FIX: Enhanced user type determination with proper priority
-  const determineUserType = useCallback((supabaseUser: SupabaseUser): 'dumper' | 'collector' => {
+  const determineUserType = useCallback((supabaseUser: SupabaseUser, existingProfile?: any): 'dumper' | 'collector' => {
     console.log('Determining user type for user:', supabaseUser.id);
     console.log('User metadata:', supabaseUser.user_metadata);
     console.log('App metadata:', supabaseUser.app_metadata);
+    console.log('Existing profile:', existingProfile);
 
+    // CRITICAL FIX: If user has an existing profile, check if they're trying to switch user types
+    if (existingProfile) {
+      const pendingType = getPendingUserType();
+      const urlType = extractUserTypeFromUrl();
+      
+      // If user is explicitly trying to sign in as a different type, allow the switch
+      if (pendingType && pendingType !== existingProfile.user_type) {
+        console.log(`User switching from ${existingProfile.user_type} to ${pendingType}`);
+        return pendingType as 'dumper' | 'collector';
+      }
+      
+      if (urlType && urlType !== existingProfile.user_type) {
+        console.log(`User switching from ${existingProfile.user_type} to ${urlType} via URL`);
+        return urlType as 'dumper' | 'collector';
+      }
+      
+      // Otherwise, use existing profile type
+      console.log('Using existing profile user type:', existingProfile.user_type);
+      return existingProfile.user_type;
+    }
+
+    // For new users, follow the original priority logic
     // Priority 1: Check user metadata (set during OAuth)
     if (supabaseUser.user_metadata?.user_type) {
       console.log('Found user type in user_metadata:', supabaseUser.user_metadata.user_type);
@@ -177,8 +201,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   }, [getPendingUserType, extractUserTypeFromUrl]);
 
   // PERFORMANCE: Memoized basic user creation with enhanced user type logic
-  const createBasicUser = useCallback((userId: string, supabaseUser?: SupabaseUser): User => {
-    const userType = supabaseUser ? determineUserType(supabaseUser) : 'dumper';
+  const createBasicUser = useCallback((userId: string, supabaseUser?: SupabaseUser, existingProfile?: any): User => {
+    const userType = supabaseUser ? determineUserType(supabaseUser, existingProfile) : 'dumper';
     
     console.log('Creating basic user with type:', userType);
     
@@ -187,27 +211,25 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       email: supabaseUser?.email || session?.user?.email || '',
       fullName: supabaseUser ? getDisplayName(supabaseUser) : (session?.user ? getDisplayName(session.user) : null),
       userType: userType,
-      phone: null,
-      address: null,
-      emailVerified: true,
-      phoneVerified: false,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      phone: existingProfile?.phone || null,
+      address: existingProfile?.address || null,
+      emailVerified: existingProfile?.email_verified ?? true,
+      phoneVerified: existingProfile?.phone_verified ?? false,
+      createdAt: existingProfile?.created_at || new Date().toISOString(),
+      updatedAt: existingProfile?.updated_at || new Date().toISOString(),
     };
   }, [session?.user, determineUserType, getDisplayName]);
 
-  // PERFORMANCE: Optimized profile existence check with caching
+  // CRITICAL FIX: Enhanced profile management to handle user type switching
   const ensureProfileExists = useCallback(async (supabaseUser?: SupabaseUser) => {
     if (!supabaseUser) return;
 
     const cacheKey = `profile_exists_${supabaseUser.id}`;
-    const cached = getCachedData<boolean>(cacheKey);
-    if (cached) return;
-
+    
     try {
-      const { data, error: checkError } = await supabase
+      const { data: existingProfile, error: checkError } = await supabase
         .from('profiles')
-        .select('id, user_type')
+        .select('*')
         .eq('id', supabaseUser.id)
         .single();
 
@@ -237,14 +259,38 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         }
 
         console.log('Profile created successfully with user type:', userType);
+        setCachedData(cacheKey, true, 300000);
       } else if (checkError) {
         throw new Error(`Profile check failed: ${checkError.message}`);
-      } else if (data) {
-        console.log('Existing profile found with user type:', data.user_type);
-      }
+      } else if (existingProfile) {
+        // Profile exists - check if user type needs to be updated
+        const desiredUserType = determineUserType(supabaseUser, existingProfile);
+        
+        if (desiredUserType !== existingProfile.user_type) {
+          console.log(`Updating user type from ${existingProfile.user_type} to ${desiredUserType}`);
+          
+          const { error: updateError } = await supabase
+            .from('profiles')
+            .update({
+              user_type: desiredUserType,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', supabaseUser.id);
 
-      // Cache the result for 5 minutes
-      setCachedData(cacheKey, true, 300000);
+          if (updateError) {
+            console.error('Failed to update user type:', updateError);
+            // Don't throw error, just log it
+          } else {
+            console.log('User type updated successfully');
+            // Clear cache to force refresh
+            clearCache(cacheKey);
+            clearCache(`user_profile_${supabaseUser.id}`);
+          }
+        }
+        
+        console.log('Existing profile found with user type:', existingProfile.user_type);
+        setCachedData(cacheKey, true, 300000);
+      }
     } catch (error: unknown) {
       console.error('Error ensuring profile exists:', error);
       throw error;
@@ -335,6 +381,57 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       setInitialized(true);
     }
   }, [createBasicUser, ensureProfileExists]);
+
+  // NEW: Function to switch user type for existing users
+  const switchUserType = useCallback(async (newUserType: 'dumper' | 'collector') => {
+    if (!user) {
+      throw new Error('User not authenticated');
+    }
+
+    if (user.userType === newUserType) {
+      console.log('User type is already', newUserType);
+      return;
+    }
+
+    try {
+      console.log(`Switching user type from ${user.userType} to ${newUserType}`);
+      
+      // Update the profile in the database
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({
+          user_type: newUserType,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', user.id);
+
+      if (updateError) {
+        throw new Error(`Failed to switch user type: ${updateError.message}`);
+      }
+
+      // Update local user state
+      const updatedUser = { 
+        ...user, 
+        userType: newUserType,
+        updatedAt: new Date().toISOString() 
+      };
+      
+      setUser(updatedUser);
+
+      // Clear caches to force refresh
+      clearCache(`user_profile_${user.id}`);
+      clearCache(`profile_exists_${user.id}`);
+      
+      // Cache the updated user data
+      setCachedData(`user_profile_${user.id}`, updatedUser, 60000);
+
+      console.log('User type switched successfully to:', newUserType);
+
+    } catch (error: unknown) {
+      console.error('Error switching user type:', error);
+      throw error;
+    }
+  }, [user]);
 
   // PERFORMANCE: Optimized initialization
   useEffect(() => {
@@ -770,6 +867,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     resendEmailVerification,
     sendPhoneVerification,
     verifyPhoneCode,
+    switchUserType,
   }), [
     user,
     session,
@@ -782,6 +880,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     resendEmailVerification,
     sendPhoneVerification,
     verifyPhoneCode,
+    switchUserType,
   ]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

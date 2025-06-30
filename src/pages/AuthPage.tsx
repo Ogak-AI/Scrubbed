@@ -1,11 +1,14 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Trash2, Users, ArrowLeft } from 'lucide-react';
+import { Trash2, Users, ArrowLeft, RefreshCw } from 'lucide-react';
 import { GoogleSignInButton } from '../components/auth/GoogleSignInButton';
+import { useAuth } from '../hooks/useAuth';
 
 export const AuthPage: React.FC = () => {
   const { userType } = useParams<{ userType: 'dumper' | 'collector' }>();
   const navigate = useNavigate();
+  const { user, switchUserType } = useAuth();
+  const [switchingType, setSwitchingType] = useState(false);
 
   const isDumper = userType === 'dumper';
   const isCollector = userType === 'collector';
@@ -15,6 +18,25 @@ export const AuthPage: React.FC = () => {
     navigate('/');
     return null;
   }
+
+  // If user is already signed in but with different account type, show switch option
+  const isSignedInWithDifferentType = user && user.userType !== userType;
+
+  const handleSwitchUserType = async () => {
+    if (!user || !userType) return;
+    
+    setSwitchingType(true);
+    try {
+      await switchUserType(userType);
+      // Redirect to appropriate dashboard after switching
+      navigate('/');
+    } catch (error) {
+      console.error('Failed to switch user type:', error);
+      alert('Failed to switch account type. Please try again.');
+    } finally {
+      setSwitchingType(false);
+    }
+  };
 
   const getPageConfig = () => {
     if (isDumper) {
@@ -109,16 +131,51 @@ export const AuthPage: React.FC = () => {
               </p>
             </div>
 
+            {/* Account Type Switch Notice */}
+            {isSignedInWithDifferentType && (
+              <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <div className="text-center">
+                  <p className="text-yellow-800 text-sm font-medium mb-2">
+                    You're currently signed in as a {user.userType === 'dumper' ? 'Customer' : 'Collector'}
+                  </p>
+                  <p className="text-yellow-700 text-sm mb-3">
+                    Would you like to switch to a {userType === 'dumper' ? 'Customer' : 'Collector'} account?
+                  </p>
+                  <button
+                    onClick={handleSwitchUserType}
+                    disabled={switchingType}
+                    className="w-full bg-yellow-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-yellow-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm flex items-center justify-center"
+                  >
+                    {switchingType ? (
+                      <>
+                        <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                        Switching...
+                      </>
+                    ) : (
+                      `Switch to ${userType === 'dumper' ? 'Customer' : 'Collector'}`
+                    )}
+                  </button>
+                  <p className="text-yellow-600 text-xs mt-2">
+                    Or sign out and sign in with a different Google account
+                  </p>
+                </div>
+              </div>
+            )}
+
             {/* Google Sign In */}
             <div className="space-y-4 sm:space-y-6">
-              <GoogleSignInButton userType={userType} />
-              
-              {/* Info */}
-              <div className="text-center">
-                <p className="text-xs sm:text-sm text-gray-500">
-                  By continuing, you agree to our Terms of Service and Privacy Policy
-                </p>
-              </div>
+              {!isSignedInWithDifferentType && (
+                <>
+                  <GoogleSignInButton userType={userType} />
+                  
+                  {/* Info */}
+                  <div className="text-center">
+                    <p className="text-xs sm:text-sm text-gray-500">
+                      By continuing, you agree to our Terms of Service and Privacy Policy
+                    </p>
+                  </div>
+                </>
+              )}
 
               {/* Features */}
               <div className={`${config.featureBg} border ${config.featureBorder} rounded-lg p-4`}>
@@ -133,17 +190,19 @@ export const AuthPage: React.FC = () => {
               </div>
 
               {/* Switch User Type */}
-              <div className="text-center pt-4 border-t border-gray-200">
-                <p className="text-xs sm:text-sm text-gray-600 mb-2">
-                  {isDumper ? 'Want to earn money instead?' : 'Need waste collected instead?'}
-                </p>
-                <button
-                  onClick={() => navigate(isDumper ? '/auth/collector' : '/auth/dumper')}
-                  className="text-xs sm:text-sm font-medium text-green-600 hover:text-green-700 transition-colors"
-                >
-                  {isDumper ? 'Become a Collector' : 'Request Collection'}
-                </button>
-              </div>
+              {!isSignedInWithDifferentType && (
+                <div className="text-center pt-4 border-t border-gray-200">
+                  <p className="text-xs sm:text-sm text-gray-600 mb-2">
+                    {isDumper ? 'Want to earn money instead?' : 'Need waste collected instead?'}
+                  </p>
+                  <button
+                    onClick={() => navigate(isDumper ? '/auth/collector' : '/auth/dumper')}
+                    className="text-xs sm:text-sm font-medium text-green-600 hover:text-green-700 transition-colors"
+                  >
+                    {isDumper ? 'Become a Collector' : 'Request Collection'}
+                  </button>
+                </div>
+              )}
 
               {/* Desktop Badge */}
               <div className="hidden sm:flex justify-center pt-4">
