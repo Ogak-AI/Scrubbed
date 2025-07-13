@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { supabase, createOptimizedRealtimeSubscription, getCachedData, setCachedData, clearCache } from '../lib/supabase';
+import { supabase, getCachedData, setCachedData, clearCache } from '../lib/supabase';
 import { useAuth } from './useAuth';
 import type { WasteRequest } from '../types';
 
@@ -65,12 +65,12 @@ export const useWasteRequests = () => {
           throw new Error(`Failed to create user profile: ${insertError.message}`);
         }
 
-        setCachedData(profileCacheKey, true, 300000); // Cache for 5 minutes
+        setCachedData(profileCacheKey, true, 600000); // Cache for 10 minutes
         return true;
       } else if (checkError) {
         throw new Error(`Database error: ${checkError.message}`);
       } else {
-        setCachedData(profileCacheKey, true, 300000);
+        setCachedData(profileCacheKey, true, 600000);
         return true;
       }
     } catch (err: unknown) {
@@ -79,101 +79,112 @@ export const useWasteRequests = () => {
     }
   }, [user]);
 
-  // CRITICAL FIX: Prevent infinite loops with better state management
-  const fetchRequests = useCallback(async () => {
-    if (!user || !cacheKey || loading) {
+  // CRITICAL FIX: Enhanced fetch with better persistence
+  const fetchRequests = useCallback(async (forceRefresh = false) => {
+    if (!user || !cacheKey) {
       return;
     }
 
-    // Check cache first
-    const cached = getCachedData<WasteRequest[]>(cacheKey);
-    if (cached && initialized) {
-      setRequests(cached);
-      return;
+    // Check cache first unless force refresh
+    if (!forceRefresh) {
+      const cached = getCachedData<WasteRequest[]>(cacheKey);
+      if (cached && initialized) {
+        setRequests(cached);
+        setLoading(false);
+        return;
+      }
     }
 
     try {
       setLoading(true);
       setError(null);
 
-      // Shorter timeout for better UX
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Request timeout')), 3000); // Reduced to 3 seconds
-      });
+      // Ensure profile exists before fetching requests
+      await ensureUserProfileExists();
 
-      const fetchPromise = (async () => {
-        // Only ensure profile exists if we haven't initialized yet
-        if (!initialized) {
-          await ensureUserProfileExists();
-        }
+      // Enhanced query with better error handling
+      let query = supabase
+        .from('waste_requests')
+        .select(`
+          id,
+          dumper_id,
+          collector_id,
+          waste_type,
+          description,
+          location,
+          address,
+          status,
+          scheduled_time,
+          estimated_amount,
+          price,
+          photos,
+          created_at,
+          updated_at
+        `)
+        .order('created_at', { ascending: false })
+        .limit(50); // Increased limit for better data persistence
 
-        // OPTIMIZED: More efficient query with specific columns and better limits
-        let query = supabase
-          .from('waste_requests')
-          .select(`
-            id,
-            dumper_id,
-            collector_id,
-            waste_type,
-            description,
-            location,
-            address,
-            status,
-            scheduled_time,
-            estimated_amount,
-            price,
-            photos,
-            created_at,
-            updated_at
-          `)
-          .order('created_at', { ascending: false })
-          .limit(20); // Reduced limit for better performance
+      // More efficient filtering
+      if (user.userType === 'dumper') {
+        query = query.eq('dumper_id', user.id);
+      } else if (user.userType === 'collector') {
+        // For collectors, get their jobs and pending requests
+        const [myJobsQuery, pendingQuery] = await Promise.all([
+          supabase
+            .from('waste_requests')
+            .select('*')
+            .eq('collector_id', user.id)
+            .order('created_at', { ascending: false })
+            .limit(25),
+          supabase
+            .from('waste_requests')
+            .select('*')
+            .eq('status', 'pending')
+            .is('collector_id', null)
+            .order('created_at', { ascending: false })
+            .limit(25)
+        ]);
 
-        // More efficient filtering
-        if (user.userType === 'dumper') {
-          query = query.eq('dumper_id', user.id);
-        } else if (user.userType === 'collector') {
-          // For collectors, get their jobs and pending requests in separate queries for better performance
-          const [myJobsQuery, pendingQuery] = await Promise.all([
-            supabase
-              .from('waste_requests')
-              .select('*')
-              .eq('collector_id', user.id)
-              .order('created_at', { ascending: false })
-              .limit(10),
-            supabase
-              .from('waste_requests')
-              .select('*')
-              .eq('status', 'pending')
-              .is('collector_id', null)
-              .order('created_at', { ascending: false })
-              .limit(10)
-          ]);
+        if (myJobsQuery.error) throw myJobsQuery.error;
+        if (pendingQuery.error) throw pendingQuery.error;
 
-          if (myJobsQuery.error) throw myJobsQuery.error;
-          if (pendingQuery.error) throw pendingQuery.error;
+        // Combine and deduplicate results
+        const combined = [...(myJobsQuery.data || []), ...(pendingQuery.data || [])];
+        const unique = combined.filter((item, index, self) => 
+          index === self.findIndex(t => t.id === item.id)
+        );
+        
+        const formattedRequests: WasteRequest[] = unique.map(request => ({
+          id: request.id,
+          dumperId: request.dumper_id,
+          collectorId: request.collector_id,
+          wasteType: request.waste_type,
+          description: request.description,
+          location: request.location as { lat: number; lng: number },
+          address: request.address,
+          status: request.status as WasteRequest['status'],
+          scheduledTime: request.scheduled_time,
+          estimatedAmount: request.estimated_amount,
+          price: request.price,
+          photos: request.photos,
+          createdAt: request.created_at,
+          updatedAt: request.updated_at,
+        }));
 
-          // Combine and deduplicate results
-          const combined = [...(myJobsQuery.data || []), ...(pendingQuery.data || [])];
-          const unique = combined.filter((item, index, self) => 
-            index === self.findIndex(t => t.id === item.id)
-          );
-          
-          return unique;
-        }
+        setRequests(formattedRequests);
+        // Cache for 10 minutes for better persistence
+        setCachedData(cacheKey, formattedRequests, 600000);
+        setInitialized(true);
+        return;
+      }
 
-        const { data, error: fetchError } = await query;
+      const { data, error: fetchError } = await query;
 
-        if (fetchError) {
-          throw new Error(`Database error: ${fetchError.message}`);
-        }
+      if (fetchError) {
+        throw new Error(`Database error: ${fetchError.message}`);
+      }
 
-        return data;
-      })();
-
-      const data = await Promise.race([fetchPromise, timeoutPromise]) as Array<Record<string, unknown>>;
-
-      // OPTIMIZED: More efficient data transformation
+      // Enhanced data transformation with better error handling
       const formattedRequests: WasteRequest[] = (data || []).map(request => ({
         id: request.id as string,
         dumperId: request.dumper_id as string,
@@ -193,21 +204,28 @@ export const useWasteRequests = () => {
 
       setRequests(formattedRequests);
       
-      // Cache the results for 2 minutes
-      setCachedData(cacheKey, formattedRequests, 120000);
+      // Cache for 10 minutes for better persistence
+      setCachedData(cacheKey, formattedRequests, 600000);
       setInitialized(true);
       
     } catch (err: unknown) {
       console.error('Error fetching requests:', err);
       const errorMessage = err instanceof Error ? err.message : 'Failed to fetch requests';
       setError(errorMessage);
-      setRequests([]);
+      
+      // Try to use cached data even if fetch fails
+      const cached = getCachedData<WasteRequest[]>(cacheKey);
+      if (cached) {
+        setRequests(cached);
+      } else {
+        setRequests([]);
+      }
     } finally {
       setLoading(false);
     }
-  }, [user, cacheKey, ensureUserProfileExists, loading, initialized]);
+  }, [user, cacheKey, ensureUserProfileExists, initialized]);
 
-  // PERFORMANCE: Optimized create request function
+  // ENHANCED: Create request with immediate local update
   const createRequest = useCallback(async (requestData: CreateRequestData) => {
     if (!user) {
       throw new Error('User not authenticated');
@@ -277,10 +295,13 @@ export const useWasteRequests = () => {
         updatedAt: data.updated_at,
       };
 
-      // Update local state and cache
+      // IMMEDIATE local state update for better UX
       setRequests(prev => [newRequest, ...prev]);
+      
+      // Update cache immediately
       if (cacheKey) {
-        clearCache(cacheKey); // Clear cache to force refresh
+        const updatedRequests = [newRequest, ...requests];
+        setCachedData(cacheKey, updatedRequests, 600000);
       }
       
       return newRequest;
@@ -288,9 +309,9 @@ export const useWasteRequests = () => {
       console.error('Error creating request:', err);
       throw err;
     }
-  }, [user, ensureUserProfileExists, cacheKey]);
+  }, [user, ensureUserProfileExists, cacheKey, requests]);
 
-  // PERFORMANCE: Optimized accept request function
+  // ENHANCED: Accept request with immediate local update
   const acceptRequest = useCallback(async (requestId: string) => {
     if (!user || user.userType !== 'collector') {
       throw new Error('Only collectors can accept requests');
@@ -318,16 +339,21 @@ export const useWasteRequests = () => {
         throw error;
       }
 
-      // Update local state
+      // IMMEDIATE local state update
       setRequests(prev => prev.map(request => 
         request.id === requestId 
-          ? { ...request, collectorId: user.id, status: 'matched' as const }
+          ? { ...request, collectorId: user.id, status: 'matched' as const, updatedAt: new Date().toISOString() }
           : request
       ));
 
-      // Clear cache to force refresh
+      // Update cache immediately
       if (cacheKey) {
-        clearCache(cacheKey);
+        const updatedRequests = requests.map(request => 
+          request.id === requestId 
+            ? { ...request, collectorId: user.id, status: 'matched' as const, updatedAt: new Date().toISOString() }
+            : request
+        );
+        setCachedData(cacheKey, updatedRequests, 600000);
       }
 
       return data;
@@ -335,9 +361,9 @@ export const useWasteRequests = () => {
       console.error('Error accepting request:', err);
       throw err;
     }
-  }, [user, ensureUserProfileExists, cacheKey]);
+  }, [user, ensureUserProfileExists, cacheKey, requests]);
 
-  // PERFORMANCE: Optimized status update function
+  // ENHANCED: Update status with immediate local update
   const updateRequestStatus = useCallback(async (requestId: string, status: WasteRequest['status']) => {
     if (!user) throw new Error('User not authenticated');
 
@@ -354,16 +380,22 @@ export const useWasteRequests = () => {
 
       if (error) throw error;
 
-      // Update local state
+      // IMMEDIATE local state update
+      const updatedAt = new Date().toISOString();
       setRequests(prev => prev.map(request => 
         request.id === requestId 
-          ? { ...request, status }
+          ? { ...request, status, updatedAt }
           : request
       ));
 
-      // Clear cache to force refresh
+      // Update cache immediately
       if (cacheKey) {
-        clearCache(cacheKey);
+        const updatedRequests = requests.map(request => 
+          request.id === requestId 
+            ? { ...request, status, updatedAt }
+            : request
+        );
+        setCachedData(cacheKey, updatedRequests, 600000);
       }
 
       return data;
@@ -371,7 +403,7 @@ export const useWasteRequests = () => {
       console.error('Error updating request status:', err);
       throw err;
     }
-  }, [user, cacheKey]);
+  }, [user, cacheKey, requests]);
 
   // CRITICAL FIX: Only fetch once on mount and when user changes
   useEffect(() => {
@@ -394,61 +426,10 @@ export const useWasteRequests = () => {
     };
   }, [user?.id, user?.userType]); // Only depend on user ID and type
 
-  // CRITICAL FIX: Disable real-time subscriptions temporarily to prevent resource exhaustion
-  // This can be re-enabled once the core issues are resolved
-  /*
-  useEffect(() => {
-    if (!user || !initialized) return;
-
-    let channel: ReturnType<typeof createOptimizedRealtimeSubscription> = null;
-    
-    const setupSubscription = () => {
-      const debouncedRefetch = () => {
-        if (document.visibilityState === 'visible') {
-          // Clear cache before refetch to ensure fresh data
-          if (cacheKey) {
-            clearCache(cacheKey);
-          }
-          fetchRequests();
-        }
-      };
-      
-      channel = createOptimizedRealtimeSubscription(
-        'waste_requests',
-        (payload) => {
-          if (payload && typeof payload === 'object' && 'new' in payload) {
-            const newData = payload.new as { dumper_id?: string; collector_id?: string; status?: string };
-            if (newData && (
-              newData.dumper_id === user.id || 
-              newData.collector_id === user.id ||
-              (user.userType === 'collector' && newData.status === 'pending')
-            )) {
-              debouncedRefetch();
-            }
-          }
-        },
-        {
-          filter: user.userType === 'dumper' ? `dumper_id=eq.${user.id}` : undefined,
-          debounceMs: 5000 // Increased debounce for better performance
-        }
-      );
-
-      return channel;
-    };
-
-    const subscription = setupSubscription();
-
-    return () => {
-      if (subscription) {
-        if (typeof subscription === 'object' && subscription !== null && 'unsubscribe' in subscription) {
-          (subscription as { unsubscribe: () => void }).unsubscribe();
-        } else {
-          supabase.removeChannel(subscription);
-        }
-      }
-    };
-  }, [user?.id, user?.userType, cacheKey, fetchRequests, initialized]);
-  */
+  // Enhanced refetch function that forces refresh
+  const refetch = useCallback(() => {
+    return fetchRequests(true);
+  }, [fetchRequests]);
 
   return {
     requests,
@@ -457,6 +438,6 @@ export const useWasteRequests = () => {
     createRequest,
     acceptRequest,
     updateRequestStatus,
-    refetch: fetchRequests,
+    refetch,
   };
 };

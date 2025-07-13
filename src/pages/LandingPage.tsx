@@ -52,11 +52,11 @@ export const LandingPage: React.FC = () => {
   }, []);
 
   const handleDumperSignUp = () => {
-    navigate('/auth/dumper');
+    navigate('/under-development/dumper-signup');
   };
 
   const handleCollectorSignUp = () => {
-    navigate('/auth/collector');
+    navigate('/under-development/collector-signup');
   };
 
   return (

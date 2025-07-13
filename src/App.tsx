@@ -5,6 +5,7 @@ import { useAuth } from './hooks/useAuth';
 import { AppProvider } from './contexts/AppContext';
 import { LandingPage } from './pages/LandingPage';
 import { AuthPage } from './pages/AuthPage';
+import { UnderDevelopmentPage } from './pages/UnderDevelopmentPage';
 import { DumperDashboard } from './components/dumper/DumperDashboard';
 import { CollectorDashboard } from './components/collector/CollectorDashboard';
 import { AdminDashboard } from './components/admin/AdminDashboard';
@@ -30,6 +31,7 @@ const AppContent: React.FC = () => {
         <Routes>
           <Route path="/" element={<LandingPage />} />
           <Route path="/auth/:userType" element={<AuthPage />} />
+          <Route path="/under-development/:feature" element={<UnderDevelopmentPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Router>
@@ -63,6 +65,9 @@ const AppContent: React.FC = () => {
         <Route path="/dumper" element={<DumperDashboard />} />
         <Route path="/collector" element={<CollectorDashboard />} />
         <Route path="/admin" element={<AdminDashboard />} />
+        
+        {/* Under development page */}
+        <Route path="/under-development/:feature" element={<UnderDevelopmentPage />} />
         
         {/* Redirect any auth routes to dashboard if already logged in */}
         <Route path="/auth/*" element={<Navigate to="/" replace />} />

@@ -42,7 +42,7 @@ try {
         autoRefreshToken: true,
         persistSession: true,
         detectSessionInUrl: true,
-        refreshTokenRetryCount: 1, // Reduced from 2
+        refreshTokenRetryCount: 1,
         storage: {
           getItem: (key: string) => {
             if (typeof window !== 'undefined') {
@@ -72,11 +72,11 @@ try {
       },
       realtime: {
         params: {
-          eventsPerSecond: 0.5, // Reduced from 1
+          eventsPerSecond: 0.5,
         },
-        heartbeatIntervalMs: 120000, // Increased from 60000
-        reconnectAfterMs: (tries: number) => Math.min(tries * 5000, 60000), // Increased delays
-        timeout: 30000, // Increased from 20000
+        heartbeatIntervalMs: 120000,
+        reconnectAfterMs: (tries: number) => Math.min(tries * 5000, 60000),
+        timeout: 30000,
       },
     });
   } else {
@@ -131,8 +131,8 @@ try {
 
 export { supabase };
 
-// CRITICAL FIX: Improved cache with size limits and automatic cleanup
-const MAX_CACHE_SIZE = 50; // Reduced from unlimited
+// ENHANCED: Improved cache with better persistence and size limits
+const MAX_CACHE_SIZE = 100; // Increased for better persistence
 const cache = new Map<string, { data: any; timestamp: number; ttl: number }>();
 
 // Cleanup old cache entries
@@ -150,7 +150,7 @@ const cleanupCache = () => {
   // If still too large, remove oldest entries
   if (cache.size > MAX_CACHE_SIZE) {
     const sortedEntries = entries
-      .filter(([key]) => cache.has(key)) // Only include non-expired entries
+      .filter(([key]) => cache.has(key))
       .sort((a, b) => a[1].timestamp - b[1].timestamp);
     
     const toRemove = sortedEntries.slice(0, cache.size - MAX_CACHE_SIZE);
@@ -160,7 +160,7 @@ const cleanupCache = () => {
   }
 };
 
-export const getCachedData = <T>(key: string, ttl: number = 30000): T | null => {
+export const getCachedData = <T>(key: string, ttl: number = 600000): T | null => { // Default 10 minutes
   const cached = cache.get(key);
   if (cached && Date.now() - cached.timestamp < cached.ttl) {
     return cached.data as T;
@@ -174,7 +174,7 @@ export const getCachedData = <T>(key: string, ttl: number = 30000): T | null => 
   return null;
 };
 
-export const setCachedData = <T>(key: string, data: T, ttl: number = 30000): void => {
+export const setCachedData = <T>(key: string, data: T, ttl: number = 600000): void => { // Default 10 minutes
   // Clean up cache before adding new entry
   if (cache.size >= MAX_CACHE_SIZE) {
     cleanupCache();
@@ -195,73 +195,10 @@ export const clearCache = (pattern?: string): void => {
   }
 };
 
-// CRITICAL FIX: Disable realtime subscriptions temporarily to prevent resource exhaustion
-export const createOptimizedRealtimeSubscription = (
-  table: string,
-  callback: (payload: unknown) => void,
-  options: { event?: string; filter?: string; debounceMs?: number } = {}
-) => {
-  console.log(`Realtime subscription disabled for ${table} to prevent resource exhaustion`);
-  return null;
-  
-  /*
-  const { debounceMs = 2000 } = options; // Increased default debounce
-  
-  if (typeof WebSocket === 'undefined' || import.meta.env.SSR) {
-    console.log('Realtime not available, skipping subscription');
-    return null;
-  }
-
-  try {
-    const channelName = `${table}_optimized_${Date.now()}`;
-    
-    let debounceTimer: NodeJS.Timeout;
-    const debouncedCallback = (payload: unknown) => {
-      if (debounceTimer) {
-        clearTimeout(debounceTimer);
-      }
-      
-      debounceTimer = setTimeout(() => {
-        try {
-          callback(payload);
-        } catch (error) {
-          console.warn('Error in realtime callback:', error);
-        }
-      }, debounceMs);
-    };
-    
-    const channel = supabase
-      .channel(channelName)
-      .on(
-        'postgres_changes',
-        {
-          event: options.event || '*',
-          schema: 'public',
-          table: table,
-          ...(options.filter && { filter: options.filter })
-        },
-        debouncedCallback
-      )
-      .subscribe((status) => {
-        if (status === 'SUBSCRIBED') {
-          console.log(`Optimized realtime subscription active for ${table}`);
-        } else if (status === 'SUBSCRIPTION_ERROR') {
-          console.warn(`Realtime subscription error for ${table} (non-critical)`);
-        }
-      });
-
-    return channel;
-  } catch (error) {
-    console.warn('Failed to create realtime subscription:', error);
-    return null;
-  }
-  */
-};
-
 // Batch database operations
 export const batchOperations = async <T>(
   operations: (() => Promise<T>)[],
-  batchSize: number = 3 // Reduced from 5
+  batchSize: number = 3
 ): Promise<T[]> => {
   const results: T[] = [];
   
@@ -320,7 +257,8 @@ if (supabase && supabase.auth && supabase.auth.onAuthStateChange) {
         };
       }
       
-      clearCache();
+      // Don't clear cache on sign in to preserve data
+      console.log('User signed in, preserving cached data');
     } else if (event === 'SIGNED_OUT') {
       clearCache();
       if (typeof window !== 'undefined') {
@@ -335,7 +273,7 @@ if (supabase && supabase.auth && supabase.auth.onAuthStateChange) {
   });
 }
 
-// CRITICAL FIX: Periodic cache cleanup to prevent memory leaks
+// Periodic cache cleanup to prevent memory leaks
 if (typeof window !== 'undefined') {
-  setInterval(cleanupCache, 60000); // Clean up every minute
+  setInterval(cleanupCache, 300000); // Clean up every 5 minutes
 }
